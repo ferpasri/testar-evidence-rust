@@ -6,6 +6,10 @@ A tool-specific adapter supplies runs, observations, widgets, properties, action
 
 Each observation remains a separate visit. Completed executions connect their source and result observations in the recorded direction. The library does not merge similar screens or require an abstraction policy. Other applications can read the portable JSONL and artifacts to build reports, central storage, or derived models.
 
+## Release versions
+
+Releases use `0.X.Y`. The `0.X` release series is shared with the specs and related state-model projects. Each project increments `Y` independently for fixes and improvements within that series. For example, a library release `0.2.1` and an adapter release `0.2.3` belong to the same `0.2` series as specs `0.2.0`.
+
 ## Build and test
 
 Run these commands in this repository:
