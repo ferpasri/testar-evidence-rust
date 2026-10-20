@@ -1,95 +1,97 @@
-# State model specification
+# Rust state model specification
 
-The library records what a testing tool observes and which actions it executes. It keeps this evidence as a sequence of visits connected by completed actions. Applications can save the sequence, reopen it, and query its states, widgets, actions, check results, and screenshots.
+The library records what a testing tool observed, which actions it discovered, what it executed, and the outcomes reported by its test oracles. An adapter translates tool data into these generic records.
 
-## What the model records
+The [shared model semantics](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/model-semantics.md) define the evidence meaning. This document describes the Rust API and its implemented behavior.
 
-| Record | Meaning |
+## Records and properties
+
+| Type | What it represents |
 | --- | --- |
-| `Run` | One test run, including the tool that produced it and identifying properties. |
-| `Observation` | One visit during a run: its position in the sequence, timestamp, captured state, available actions, and evidence references. |
-| `ConcreteState` | The snapshot captured during a visit, containing state properties and widgets. |
-| `Widget` | A captured interface element with properties and an optional parent widget. |
-| `PropertyMap` | Named JSON values describing a record, such as text, a role, a measurement, or structured data. |
-| `ActionDefinition` | The identity, kind, and descriptive properties of an action. |
-| `ActionCandidate` | An action offered at one observation, optionally associated with a widget. |
-| `Execution` | One selected action, its source observation, target widget, and execution parameters. |
-| `CheckResult` | The recorded outcome and evidence from an evaluation performed by a test oracle. |
+| `Run` | One testing session and its producer information. |
+| `Observation` | One visit, with its sequence position, timestamp, state, candidates, and artifact references. |
+| `ConcreteState` | Captured state properties and an ordered widget hierarchy. |
+| `Widget` | A captured interface element, its local ID, optional parent, and properties. |
+| `PropertyMap` | Named JSON values, including nested data and explicit null values. |
+| `ActionDefinition` | An action's stable ID, kind, and descriptive properties. |
+| `ActionCandidate` | An action discovered at one observation, optionally bound to a widget. |
+| `Execution` | One selection, including its source, candidate binding, and actual parameters. |
+| `CheckResult` | The outcome and supporting information from one test oracle evaluation. |
 | `CheckRule` | The condition's ID, optional version, and optional parameters. |
-| `CheckTarget` | The observation, widget, property, execution, run, or sequence being evaluated. |
+| `CheckTarget` | The run, visit, widget, property, execution, or sequence being evaluated. |
 | `CheckReading` | A reported JSON value, established absence, or unknown information. |
 | `ExpectedValue` | An omitted expectation or a supplied JSON value, including null. |
+| `ArtifactReference` | A local evidence file, its media type, SHA-256 hash, and optional dimensions. |
 
-Each observation represents a separate visit. For example, observing the same screen twice produces two observations. Both may reference the same concrete snapshot ID when their snapshot content is identical. This preserves the order of visits and the actions performed between them.
+Every visit has its own observation ID. Identical snapshot content can share a snapshot ID while the visits and execution history remain separate. Snapshot IDs retain fixed content.
 
-Widgets retain their supplied order and parent relationships. A snapshot may contain several widgets with no parent. Widget IDs are unique within a snapshot; each parent belongs to that snapshot, and following parent relationships leads to a root widget.
+Widget IDs are local to their snapshot. Parents refer to widgets in that snapshot, and the hierarchy is acyclic. Several root widgets are allowed. Capture scope records complete, filtered, or unavailable widget information. Properties preserve missing values separately from explicit nulls. Source-prefixed properties can retain tool-specific details.
 
-Properties preserve JSON values, including the difference between an absent property and an explicitly supplied null. Tool-specific properties can use a prefix identifying their source.
+IDs and property names are nonblank strings without control characters. The producer supplies IDs that distinguish its records across runs and sources.
 
-An observation also describes the available information. `CaptureScope` records whether widget capture is complete, filtered, or unavailable. `CandidateScope` records whether the action list has unknown status, was generated, or was marked eligible by the producer.
+## Discovered actions and exploration
 
-IDs are nonblank strings. The producer chooses IDs that distinguish records across its runs and other sources.
+An observation retains its candidates even when they are never selected. Candidate scope records whether the producer reports generated actions, actions marked eligible under its selection rules, or an unknown scope.
 
-## Recording evaluations
+For example, a tool can report ten candidate actions and execute one. The observation keeps all ten candidates; the execution identifies the selected action and its widget binding.
 
-A test oracle applies a rule to a target. One application is an evaluation; `CheckResult` stores its outcome and evidence. The adapter supplies these results, and the library validates their structure and references.
+Consumers can identify candidates with no recorded selection from that observation. Selection, accepted submission, and a resulting observation are separate stages. Comparing exploration across different visits requires a policy for matching observations and actions. Candidate lists describe what the producer reported, so their counts reflect that scope.
 
-`CheckTarget` can identify a run, observation, state property, widget, widget property, execution, or range of observations. Referenced records belong to the result's run. A widget belongs to the identified observation. A sequence includes its endpoints, with the ending observation at or after the start.
+## Events and execution order
 
-A property target may name an absent property: the test oracle can evaluate whether that property exists. Each result describes the evaluation actually reported, separately from the properties captured in the snapshot.
+Each `EventEnvelope` identifies one versioned event with a fixed event ID and payload.
 
-`CheckReading` distinguishes a JSON value (including null), established absence, and unknown information. An omitted `actual` field means no reading was supplied. `ExpectedValue::Unspecified` omits `expected`; `ExpectedValue::Value` preserves the supplied expectation, including an explicit JSON null. Optional rule versions and parameter maps also preserve whether they were supplied.
-
-Invalid target references return `Error::InvalidCheckTarget`, identifying the affected field, before the result changes the model or is appended to the log.
-
-## How a run is recorded
-
-The tool sends events in the order they happen:
-
-1. `run_started` registers the run and its origin.
-2. `action_defined` registers an action definition. An existing action ID retains the same definition.
-3. `observed` records a visit. Observation sequence numbers increase within each run.
-4. `action_selected` selects a candidate from the latest observation. The run can have one action awaiting completion at a time.
-5. `action_submitted` records whether the submission was accepted or rejected.
-6. `action_result` connects an accepted execution to a later observation in the same run.
-7. `run_finished` records the ending reason and marks any pending execution as incomplete.
-
-A `checked` event records a check result. Passed and failed describe whether the condition was satisfied. Error records a problem during evaluation; unknown means no outcome could be determined, and pending means evaluation is awaiting completion. Results retain their targets and may arrive after a run finishes. Submission acceptance and check results are recorded separately.
-
-Every event is wrapped in an `EventEnvelope` containing its schema version, event ID, kind, and data. `StateModel::validate` checks the event against the current model. `StateModel::apply` performs that validation and updates the model.
-
-An event ID identifies one fixed payload. Sending an identical event again returns `false` and preserves the existing evidence. Sending different content under that ID produces a conflict.
-
-## Following the execution history
-
-`ExecutionRecord` exposes the selected action, its current status, and its result observation when available. Status progresses from selected to submitted or rejected. Linking a submitted action to its resulting observation gives it the observed status. Pending actions become incomplete when their run finishes.
-
-`ExecutionLink` connects the source and result observations of one completed execution, in the recorded direction. Each completed execution has its own link, including repeated actions between visits.
-
-`StateModel` provides queries for runs, observations, snapshots, actions, executions, candidates, and check results. `incoming` and `outgoing` find links for a particular observation. `observations_for_snapshot` finds all visits referencing one snapshot.
-
-`observations_for_run` returns visits in sequence order. Execution queries and links follow action selection order. Check results follow recording order. General observation, snapshot, run, and action lists are sorted by ID.
-
-## Saving and reopening evidence
-
-`JsonlStore` saves a model directory containing:
-
-| File or directory | Contents |
+| Event | Recorded behavior |
 | --- | --- |
-| `manifest.json` | Model identity and schema version. |
-| `evidence.jsonl` | The event history, with one JSON event per line. |
-| `artifacts/` | Evidence files referenced by observations. |
+| `run_started` | Registers the run and its origin. |
+| `action_defined` | Registers an action definition whose ID retains the same content. |
+| `observed` | Records a visit, with sequence numbers increasing within its run. |
+| `action_selected` | Selects a matching action/target pair from the latest observation. |
+| `action_submitted` | Records acceptance or rejection, with any rejection error. |
+| `action_result` | Links an accepted execution to a later observation in the same run. |
+| `checked` | Records one test oracle evaluation's outcome and supporting evidence. |
+| `run_finished` | Records the ending reason and marks outstanding executions incomplete. |
 
-An exclusive writer lock gives one writer access to the directory at a time. `record` validates each event before appending it, then flushes and synchronizes the file before acknowledging the write. Opening the directory validates and replays the event history to rebuild the model in memory.
+A run starts before its observations, and action definitions precede their candidates. A run can have one execution awaiting submission or a result. Rejected submission permits another selection.
 
-Artifacts have a SHA-256 content identifier, a relative file path, a media type, and optional dimensions supplied by the caller. PNG files receive a `.png` extension, JPEG files `.jpeg`, and other media `.bin`. The store checks referenced paths and file hashes when recording and reopening evidence. Moving the whole model directory keeps the event history and its evidence together.
+`StateModel::validate` checks an event without applying it. `StateModel::apply` validates before updating the model. An identical event retry returns `false`. Different content using an existing event ID raises a conflict.
 
-If an interrupted write leaves an unfinished final line, `recover_tail` validates the preceding events and removes that unfinished fragment. A failed write requires reopening the store before recording more events.
+`ExecutionRecord` exposes the selected action and its status: selected, submitted, rejected, observed, or incomplete. A completed execution produces an `ExecutionLink` from its source observation to its result. Submission acceptance records what happened at that stage; test oracle results describe evaluated conditions separately.
 
-## Checking the implementation against the specification
+## Test oracle results
 
-`cargo run -p xtask -- prepare-conformance` selects the newest published specs release, including prereleases, and prepares its conformance files under `target/conformance/`. The selected release and file checksums are recorded in `current.json` inside that directory.
+A test oracle applies a rule to a target. The adapter records one evaluation as a `CheckResult`, with its name, rule, target, status, and supporting details. Captured properties and recorded evaluations remain separate evidence.
 
-Tests verify the prepared file checksums and discover the released case directories. Accepted cases test both reading the supplied evidence and producing equivalent evidence through the public Rust API, including properties, check results, and artifact bytes. Rejected cases compare the invalid event and target field with the expected error, verify the accepted prefix, and reopen that prefix. Rejection preserves the model and saved evidence. Once prepared, this data is available for offline tests.
+Targets can identify a run, observation, state property, widget, widget property, execution, or inclusive observation sequence. Referenced records belong to the result's run. A widget belongs to its referenced observation. A property's presence can itself be evaluated, so the target may name an absent property.
 
-Additional Rust tests cover record validation, repeated visits, execution order, event retries, storage recovery, writer locking, artifact integrity, and moving a saved model.
+Passed and failed report whether the condition was satisfied. Pending means the evaluation had no definite result when recorded; unknown means the oracle could not determine an outcome. Error records an evaluation problem. Finishing a run retains these reported statuses. Results may arrive after the run finishes.
+
+`ExpectedValue::Unspecified` omits an expectation. `ExpectedValue::Value` preserves the supplied JSON value, including null. An actual reading can contain a value, established absence, or unknown information; omitting the reading means none was supplied. Optional rule versions and parameter maps retain whether they were supplied.
+
+An invalid target returns `Error::InvalidCheckTarget`, identifying the affected field, such as `target.widget`. Rejection preserves the model and stored log.
+
+## Queries and data access
+
+Queries expose runs, visits, snapshots, actions, candidates, executions, links, and check results. Visits within a run are ordered by sequence; executions and links follow selection order; evaluations follow recording order. General run, observation, action, and snapshot lists are sorted by ID.
+
+`incoming` and `outgoing` find completed links for a visit. `observations_for_snapshot` finds the visits referencing a snapshot. `observations_for_run` returns a run's ordered visits.
+
+The store exposes its model through a shared reference. Updating the standalone model or recording events requires mutable access. Observation sequence numbers and timestamps use `u64`; properties use JSON values.
+
+## Storage
+
+`JsonlStore` manages a directory containing `manifest.json`, `evidence.jsonl`, and referenced `artifacts/`. `create` creates a collection; `open` validates and replays it for continued recording.
+
+An exclusive file lock allows one writer per directory. `record` validates the event and its artifacts, appends one UTF-8 JSON line, then synchronizes it to storage before acknowledging the write. A persistence failure invalidates the writer until it is reopened.
+
+`put_artifact` identifies supplied bytes by SHA-256 and reuses identical content. PNG paths end in `.png`, JPEG paths in `.jpeg`, and other media paths in `.bin`. The caller supplies the media type and optional dimensions. Referenced files are checked by hash when recording or reopening. Relative artifact paths keep evidence portable when the whole directory is moved.
+
+Each JSONL record ends with a newline. `recover_tail` acquires the writer lock, validates the complete preceding events and artifacts, and removes an unfinished final fragment. Complete invalid records cause recovery to fail without changing the log.
+
+## Verification
+
+The [README](../README.md#shared-conformance-data) describes preparation of the newest published specs cases and the local cache. Tests discover released cases and verify their cached checksums.
+
+Reader tests compare accepted records or rejected targets with the released expectations. Producer tests write equivalent evidence through the public API, verify field and artifact preservation, check identical retries and rejection behavior, and reopen the accepted evidence.
+
+Unit tests cover record validation, candidate preservation, repeated visits, execution ordering, evaluation targets, event retries, writer locking, artifact integrity, and recovery.

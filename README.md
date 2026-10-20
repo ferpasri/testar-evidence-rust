@@ -1,18 +1,20 @@
-# testar-state-model
+# TESTAR state model for Rust
 
-A standalone Rust library for recording concrete test evidence in the generic format defined by `testar-state-model-specs`.
+A standalone Rust library for recording test execution evidence in the shared [TESTAR state model format](https://github.com/ferpasri/testar-state-model-specs).
 
-A tool-specific adapter supplies runs, observations, widgets, properties, actions, executions, and evidence such as screenshots. This library validates those records, saves a local model directory, and exposes queries over the recorded execution history. It has no dependency on a particular testing tool or user-interface technology.
+Tool adapters supply runs, observed states, widgets, properties, discovered actions, executions, screenshots, and test oracle results. The library validates those records, saves portable model directories, and exposes queries over the execution history.
 
-Each observation remains a separate visit. Completed executions connect their source and result observations in the recorded direction. The library does not merge similar screens or require an abstraction policy. Other applications can read the portable JSONL and artifacts to build reports, central storage, or derived models.
+Every visit remains a separate observation. Completed executions connect their source and result observations in the recorded direction. Discovered candidates remain available even when never selected. Consumers can use the saved evidence to display traces or build derived models.
+
+Captured properties and oracle evaluations are separate evidence. Check results identify what was evaluated, the rule, its outcome, and any reported reading.
 
 ## Release versions
 
-Releases use `0.X.Y`. The `0.X` release series is shared with the specs and related state-model projects. Each project increments `Y` independently for fixes and improvements within that series. For example, a library release `0.2.1` and an adapter release `0.2.3` belong to the same `0.2` series as specs `0.2.0`.
+Releases use `0.X.Y`. The `0.X` release series is shared with the specs and related state-model projects. Each project increments `Y` independently for fixes and improvements within that series. For example, library `0.2.1` and adapter `0.2.3` belong to the same `0.2` series as specs `0.2.0`.
 
 ## Build and test
 
-Run these commands in this repository:
+Use Rust 1.85 or later. Run these commands from this repository:
 
 ```sh
 cargo build --locked
@@ -20,26 +22,43 @@ cargo run --locked -p xtask -- prepare-conformance
 cargo test --locked --workspace
 ```
 
-`xtask` is a separate Rust package containing development tooling. It downloads and extracts the shared conformance data used by the tests.
+`xtask` is the Rust package containing the conformance preparation tooling.
 
-Create and reopen a small model containing one completed execution and a PNG:
+## Import the library
+
+A consuming Cargo project can declare a local dependency:
+
+```toml
+[dependencies]
+testar-state-model = { path = "../testar-state-model-rust", version = "0.2.0" }
+```
+
+The public API is exported by `testar_state_model`.
+
+## Example
+
+[local_model.rs](examples/local_model.rs) records and reopens a demonstration model containing one completed execution and a PNG. Comments explain the recording steps.
 
 ```sh
 cargo run --locked --example local_model -- target/example-model
 ```
 
-Use a new output directory for each example run.
+Use a new output directory for each example run. Open the generated model directory in the state model dashboard.
 
 ## Shared conformance data
 
-The setup command queries the public [specs releases](https://github.com/ferpasri/testar-state-model-specs/releases) on every run. It selects the newest publication by `published_at`, including prereleases and excluding drafts and unpublished entries. Ties use the release ID. This follows publication order rather than the highest version number.
+The preparation command queries the public [specs releases](https://github.com/ferpasri/testar-state-model-specs/releases). It selects the newest publication by `published_at`, including prereleases and excluding draft or unpublished entries. Ties use the release ID. Publication order determines the selection.
 
-Setup prints the selected release, downloads its source archive over HTTPS, and extracts its conformance files into this repository's ignored `target/conformance/` directory. It records the selected release and locally computed SHA-256 checksums in `target/conformance/current.json`. Those checksums detect later changes to cached files; they are not independent publisher signatures.
+Preparation downloads the release archive over HTTPS and extracts its conformance files into the ignored `target/conformance/` directory. `current.json` records the selected release and locally computed SHA-256 checksums. Tests verify those checksums to detect changes to cached files.
 
-Archive paths and extraction sizes are checked. Incomplete case directories are rejected. A failed download or extraction returns an error and leaves the previous prepared selection intact. Setup never silently substitutes an older release when checking for the latest one fails.
+Archive paths, extraction sizes, and case completeness are checked. Preparation reports a failure and leaves the previous prepared selection intact. A failed latest-release lookup is reported to the caller.
 
-After successful setup, tests use the prepared data offline and verify its checksums. Running tests alone does not check for newer releases. Repeat the setup command when checking compatibility with the latest specs, including before tests in CI. A newer release can change the test outcome without a Rust source change; the selected release is recorded to explain the result.
+After successful preparation, tests use the cached cases offline. Running tests alone uses that prepared selection; repeat preparation to check compatibility with the latest release, including before tests in CI. Deleting `target/` removes both the cache and build output.
 
-Conformance tests discover every case directory. Reader and producer tests compare accepted records, and rejected cases verify the error, unchanged model/log, and accepted prefix after reopening. Check results preserve rule identities, concrete targets, statuses, optional expectations, and value/absent/unknown readings. Rust regression tests also use the initial-observation case. The example PNG remains a local test asset.
+Tests discover every released case directory. Reader tests load supplied evidence. Producer tests record equivalent evidence through the public API and reopen it. Both compare the records and rejected-case expectations, preserve artifact bytes, and verify that rejection leaves the accepted evidence unchanged.
 
-Building the library and running its local example do not require downloaded specs data. See [SPEC.md](docs/SPEC.md) for implemented behavior and [TODO.md](TODO.md) for remaining work.
+## Documents
+
+- [Shared model semantics](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/model-semantics.md): the meaning of generic evidence.
+- [Implementation specification](docs/SPEC.md): this library's API and implemented behavior.
+- [TODO](TODO.md): planned work.
