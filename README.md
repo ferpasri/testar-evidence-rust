@@ -8,9 +8,11 @@ Every visit remains a separate observation. Completed executions connect their s
 
 Captured properties and oracle evaluations are separate evidence. Check results identify what was evaluated, the rule, its outcome, and any reported reading.
 
+The adapter supplies captured values and describes which widgets and properties it collected. The library preserves optional capture descriptions, known omissions, and declared property aliases. The [shared capture conventions](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/capture-evidence.md) explain their meaning.
+
 ## Release versions
 
-Releases use `0.X.Y`. The `0.X` release series is shared with the specs and related state-model projects. Each project increments `Y` independently for fixes and improvements within that series. For example, library `0.2.1` and adapter `0.2.3` belong to the same `0.2` series as specs `0.2.0`.
+Releases use `0.X.Y`. The `0.X` release series is shared with the specs and related state-model projects. Each project increments `Y` independently for fixes and improvements within that series. Different patch versions can coexist within the same release series.
 
 ## Build and test
 
@@ -30,7 +32,7 @@ A consuming Cargo project can declare a local dependency:
 
 ```toml
 [dependencies]
-testar-state-model = { path = "../testar-state-model-rust", version = "0.2.0" }
+testar-state-model = { path = "../testar-state-model-rust", version = "0.2.1" }
 ```
 
 The public API is exported by `testar_state_model`.
@@ -55,7 +57,7 @@ Archive paths, extraction sizes, and case completeness are checked. Preparation 
 
 After successful preparation, tests use the cached cases offline. Running tests alone uses that prepared selection; repeat preparation to check compatibility with the latest release, including before tests in CI. Deleting `target/` removes both the cache and build output.
 
-Tests discover every released case directory. Reader tests load supplied evidence. Producer tests record equivalent evidence through the public API and reopen it. Both compare the records and rejected-case expectations, preserve artifact bytes, and verify that rejection leaves the accepted evidence unchanged.
+Tests discover every released case directory. Reader tests load supplied evidence. Producer tests record equivalent evidence through the public API and reopen it. Both compare the records and rejected-case expectations, preserve complete accepted event payloads and artifact bytes, and verify that rejection leaves the accepted evidence unchanged.
 
 ## Documents
 

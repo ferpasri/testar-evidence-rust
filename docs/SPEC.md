@@ -25,9 +25,19 @@ The [shared model semantics](https://github.com/ferpasri/testar-state-model-spec
 
 Every visit has its own observation ID. Identical snapshot content can share a snapshot ID while the visits and execution history remain separate. Snapshot IDs retain fixed content.
 
-Widget IDs are local to their snapshot. Parents refer to widgets in that snapshot, and the hierarchy is acyclic. Several root widgets are allowed. Capture scope records complete, filtered, or unavailable widget information. Properties preserve missing values separately from explicit nulls. Source-prefixed properties can retain tool-specific details.
+Widget IDs are local to their snapshot. Parents refer to widgets in that snapshot, and the hierarchy is acyclic. Several root widgets are allowed.
 
 IDs and property names are nonblank strings without control characters. The producer supplies IDs that distinguish its records across runs and sources.
+
+## Capture and property meanings
+
+Capture scope records complete, filtered, or unavailable widget information. A complete widget tree can still contain only selected properties. The capture description identifies which properties are collected and, if known, explains exclusions or limitations.
+
+`PropertyMap` preserves supplied JSON values, including nested objects, lists, empty strings, and explicit nulls. Missing keys remain distinct from recorded null values. Optional `evidence.capture`, `evidence.omitted_properties`, and `evidence.property_aliases` values use these maps as described in the [shared capture conventions](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/capture-evidence.md).
+
+The adapter supplies properties with their source meanings. State-level `ui.title` is the application's page, screen, or window title; `ui.url` is the full captured page address. A widget's actual title attribute, visible text, and accessible name are distinct properties. A common property name requires a verified source meaning. The library retains the supplied names and values.
+
+A declared alias gives another name to the same captured property within one state or widget record. The adapter declares that relationship from the source definition; equal values alone do not establish it. Check results retain the exact property key evaluated.
 
 ## Discovered actions and exploration
 
@@ -47,7 +57,7 @@ Each `EventEnvelope` identifies one versioned event with a fixed event ID and pa
 | `action_defined` | Registers an action definition whose ID retains the same content. |
 | `observed` | Records a visit, with sequence numbers increasing within its run. |
 | `action_selected` | Selects a matching action/target pair from the latest observation. |
-| `action_submitted` | Records acceptance or rejection, with any rejection error. |
+| `action_submitted` | Records whether the testing tool accepted or rejected execution of the action, with any reported error. |
 | `action_result` | Links an accepted execution to a later observation in the same run. |
 | `checked` | Records one test oracle evaluation's outcome and supporting evidence. |
 | `run_finished` | Records the ending reason and marks outstanding executions incomplete. |
@@ -58,13 +68,17 @@ A run starts before its observations, and action definitions precede their candi
 
 `ExecutionRecord` exposes the selected action and its status: selected, submitted, rejected, observed, or incomplete. A completed execution produces an `ExecutionLink` from its source observation to its result. Submission acceptance records what happened at that stage; test oracle results describe evaluated conditions separately.
 
+A rejected submission reports that the testing tool's runner, driver, or execution wrapper could not accept or execute the action. Its reported error is retained, and that execution has no completed result observation. An executed action that produces an application message such as "Incorrect password" has a result observation containing that response.
+
 ## Test oracle results
 
 A test oracle applies a rule to a target. The adapter records one evaluation as a `CheckResult`, with its name, rule, target, status, and supporting details. Captured properties and recorded evaluations remain separate evidence.
 
-Targets can identify a run, observation, state property, widget, widget property, execution, or inclusive observation sequence. Referenced records belong to the result's run. A widget belongs to its referenced observation. A property's presence can itself be evaluated, so the target may name an absent property.
+Targets can identify a run, observation, state property, widget, widget property, execution, or inclusive observation sequence. Referenced records belong to the result's run. A widget belongs to its referenced observation. A property's presence can itself be evaluated, so the target may name an absent property. Property targets use exact top-level keys: `ui.alt` is one literal key, and an object stored under `source.attributes` is one property. A result about an entire observation or run describes that target; individual property coverage comes from results naming the properties.
 
 Passed and failed report whether the condition was satisfied. Pending means the evaluation had no definite result when recorded; unknown means the oracle could not determine an outcome. Error records an evaluation problem. Finishing a run retains these reported statuses. Results may arrive after the run finishes.
+
+Each reported result remains a separate record. Optional `evidence.assessment` information in `details` preserves the oracle's reporting phase, temporal meaning, and supplied termination reason. An earlier pending result retains its recorded status when a later assessment arrives.
 
 `ExpectedValue::Unspecified` omits an expectation. `ExpectedValue::Value` preserves the supplied JSON value, including null. An actual reading can contain a value, established absence, or unknown information; omitting the reading means none was supplied. Optional rule versions and parameter maps retain whether they were supplied.
 
@@ -92,6 +106,6 @@ Each JSONL record ends with a newline. `recover_tail` acquires the writer lock, 
 
 The [README](../README.md#shared-conformance-data) describes preparation of the newest published specs cases and the local cache. Tests discover released cases and verify their cached checksums.
 
-Reader tests compare accepted records or rejected targets with the released expectations. Producer tests write equivalent evidence through the public API, verify field and artifact preservation, check identical retries and rejection behavior, and reopen the accepted evidence.
+Reader tests compare accepted records or rejected targets with the released expectations. Producer tests write equivalent evidence through the public API, compare the complete persisted event payloads and artifact bytes, check identical retries and rejection behavior, and reopen the accepted evidence. Released cases exercise capture descriptions and aliases, unselected candidates, scripted executions, rejected submissions, and temporal reports alongside targeted property evaluations.
 
 Unit tests cover record validation, candidate preservation, repeated visits, execution ordering, evaluation targets, event retries, writer locking, artifact integrity, and recovery.

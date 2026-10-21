@@ -120,9 +120,26 @@ fn assert_result(model: &StateModel, expected: &Value, failure: Option<Value>) {
 
 fn assert_evidence_preserved(
     store: &JsonlStore,
+    directory: &Path,
     source: &Path,
     accepted: &[EventEnvelope],
 ) {
+    let persisted: Vec<Value> =
+        fs::read_to_string(directory.join("evidence.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+    let expected: Vec<Value> = accepted
+        .iter()
+        .map(|envelope| serde_json::to_value(envelope).unwrap())
+        .collect();
+    assert_eq!(
+        persisted,
+        expected,
+        "Accepted event payloads must survive persistence in {}",
+        source.display()
+    );
     for envelope in accepted {
         match &envelope.event {
             Event::Observed(observation) => {
@@ -185,7 +202,12 @@ fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
         match JsonlStore::open(directory.path()) {
             Ok(store) => {
                 assert_result(store.model(), &expected, None);
-                assert_evidence_preserved(&store, &source, &events);
+                assert_evidence_preserved(
+                    &store,
+                    directory.path(),
+                    &source,
+                    &events,
+                );
             }
             Err(reader_error) => {
                 let mut model = StateModel::new(manifest).unwrap();
@@ -223,7 +245,12 @@ fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
                     .unwrap();
                 let reopened = JsonlStore::open(prefix.path()).unwrap();
                 assert_eq!(normalized(reopened.model()), normalized(&model));
-                assert_evidence_preserved(&reopened, &source, &accepted);
+                assert_evidence_preserved(
+                    &reopened,
+                    prefix.path(),
+                    &source,
+                    &accepted,
+                );
             }
         }
         assert_eq!(
@@ -286,10 +313,16 @@ fn produces_every_shared_case_and_reopens_its_accepted_prefix() {
             }
         }
         assert_result(store.model(), &expected, failure.clone());
+        assert_evidence_preserved(&store, directory.path(), &source, &accepted);
         drop(store);
         let reopened = JsonlStore::open(directory.path()).unwrap();
         assert_result(reopened.model(), &expected, failure);
-        assert_evidence_preserved(&reopened, &source, &accepted);
+        assert_evidence_preserved(
+            &reopened,
+            directory.path(),
+            &source,
+            &accepted,
+        );
         assert_eq!(
             read_json(&directory.path().join("manifest.json")),
             read_json(&source.join("manifest.json"))

@@ -4,6 +4,7 @@
 - [x] Record test oracle evaluations with explicit targets and readings.
 - [x] Implement portable JSONL storage, artifacts, replay, writer locking, and tail recovery.
 - [x] Download the latest published shared conformance cases and test reading and writing.
+- [x] Verify capture descriptions and aliases, discovered candidates, scripted traces, and temporal assessments against the shared cases, including complete persisted event payloads.
 - [x] Provide a commented example and concise implementation specification.
 - [x] Integrate a separate tool adapter through the library dependency and verify a real execution.
 - [ ] Compare evidence from multiple producers in the dashboard before extending derived model rules.
