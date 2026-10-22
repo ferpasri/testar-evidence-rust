@@ -6,7 +6,7 @@ mod storage;
 
 pub use domain::*;
 pub use error::{Error, Result};
-pub use event::{Event, EventEnvelope, Manifest, SCHEMA_VERSION};
+pub use event::{Event, EvidenceEvent, Manifest, SCHEMA_VERSION};
 pub use model::{
     ExecutionLink, ExecutionRecord, ExecutionStatus, RunStatus, StateModel,
 };

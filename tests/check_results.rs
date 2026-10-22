@@ -18,8 +18,8 @@ fn check(target: CheckTarget) -> CheckResult {
     serde_json::from_value(raw).unwrap()
 }
 
-fn envelope(id: &str, event: Event) -> EventEnvelope {
-    EventEnvelope {
+fn envelope(id: &str, event: Event) -> EvidenceEvent {
+    EvidenceEvent {
         schema_version: SCHEMA_VERSION,
         id: EventId::new(id).unwrap(),
         event,
@@ -33,7 +33,7 @@ fn manifest() -> Manifest {
     }
 }
 
-fn seed() -> Vec<EventEnvelope> {
+fn seed() -> Vec<EvidenceEvent> {
     let mut events = Vec::new();
     for run in ["run-1", "run-2"] {
         events.push(Event::RunStarted(Run {

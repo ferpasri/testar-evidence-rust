@@ -23,7 +23,7 @@ fn manifest() -> Manifest {
 fn shared_evidence_replays_into_the_state_model() {
     let mut model = StateModel::new(manifest()).unwrap();
     for line in shared_evidence().lines() {
-        let envelope: EventEnvelope = serde_json::from_str(line).unwrap();
+        let envelope: EvidenceEvent = serde_json::from_str(line).unwrap();
         assert!(model.apply(envelope).unwrap());
     }
     assert_eq!(model.event_count(), 3);
@@ -36,7 +36,7 @@ fn shared_evidence_replays_into_the_state_model() {
 fn floating_point_evidence_reopens_exactly_and_retry_stays_idempotent() {
     let directory = tempdir().unwrap();
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
-    let started: EventEnvelope =
+    let started: EvidenceEvent =
         serde_json::from_str(shared_evidence().lines().next().unwrap())
             .unwrap();
     store.record(started).unwrap();
@@ -62,7 +62,7 @@ fn floating_point_evidence_reopens_exactly_and_retry_stays_idempotent() {
         candidates: vec![],
         artifacts: vec![],
     };
-    let envelope = EventEnvelope {
+    let envelope = EvidenceEvent {
         schema_version: SCHEMA_VERSION,
         id: EventId::new("measurement-event").unwrap(),
         event: Event::Observed(observation.clone()),
@@ -85,7 +85,7 @@ fn manifest_and_observation_reject_unknown_fields() {
         serde_json::from_str(shared_evidence().lines().last().unwrap())
             .unwrap();
     observed["event"]["data"]["unexpected_field"] = json!("unexpected-value");
-    let error = serde_json::from_value::<EventEnvelope>(observed).unwrap_err();
+    let error = serde_json::from_value::<EvidenceEvent>(observed).unwrap_err();
     assert!(error.to_string().contains("unexpected_field"));
 }
 

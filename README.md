@@ -1,10 +1,10 @@
 # TESTAR evidence for Rust
 
-A standalone Rust library for recording test execution evidence in the shared [TESTAR evidence format](https://github.com/ferpasri/testar-evidence-specs).
+A standalone Rust library for validating and saving portable test execution evidence in the shared [TESTAR evidence format](https://github.com/ferpasri/testar-evidence-specs).
 
-Tool adapters supply runs, observed states, widgets, properties, discovered actions, executions, screenshots, and test oracle results. The library validates those records, saves portable model directories, and exposes queries over the execution history.
+Tool adapters supply runs, observed states, widgets, properties, discovered actions, executions, screenshots, and test oracle results. The library checks that the records and their references are valid, then saves them as portable evidence files.
 
-Every visit remains a separate observation. Completed executions connect their source and result observations in the recorded direction. Discovered candidates remain available even when never selected. Consumers can use the saved evidence to display traces or build derived models.
+Every visit remains a separate observation. Each completed action connects the observation before the action to its resulting observation, forming a state-action-state execution trace. Discovered candidates remain available even when never selected. Consumers can use the saved evidence to display traces or build derived models.
 
 Captured properties and oracle evaluations are separate evidence. Check results identify what was evaluated, the rule, its outcome, and any reported reading.
 
@@ -42,10 +42,14 @@ The public API is exported by `testar_evidence`.
 [local_model.rs](examples/local_model.rs) records and reopens a demonstration model containing one completed execution and a PNG. Comments explain the recording steps.
 
 ```sh
-cargo run --locked --example local_model -- target/example-model
+cargo run --locked --example local_model -- target/traces demo submit-form
 ```
 
-Use a new output directory for each example run. Open the generated model directory in the state model dashboard.
+Arguments select the parent directory, SUT label, and test objective label. Each run reserves its own directory, such as `target/traces/demo_submit-form_trace-2026-10-22_15-30-12-123/`. A collision adds a numeric suffix. Each run also has distinct model and run identities. Labels are retained in run properties, while their filename versions are sanitized and limited to 32 characters each. The example uses demonstration records. Open a complete generated trace directory in the dashboard.
+
+## Reading and inspecting saved traces
+
+The library remembers earlier records while writing so it can check new ones. For example, a selected action must refer to an existing observation and one of its candidates. `JsonlStore::open(directory)` reads and validates saved records before continuing a recording. `observations_for_run`, `executions_for_run`, and `outgoing` provide simple lookups over those records. Reading and inspection support recording; consumers decide how to group visits into derived models.
 
 ## Shared conformance data
 

@@ -7,7 +7,7 @@ use tempfile::tempdir;
 use testar_evidence::{
     ActionCandidate, ActionDefinition, ActionId, ArtifactReference,
     CandidateScope, CaptureScope, ConcreteState, ConcreteStateId, Error, Event,
-    EventEnvelope, EventId, Execution, ExecutionId, JsonlStore, Manifest,
+    EventId, EvidenceEvent, Execution, ExecutionId, JsonlStore, Manifest,
     ModelId, Observation, ObservationId, PropertyMap, Run, RunId,
     SCHEMA_VERSION, Widget, WidgetId,
 };
@@ -75,8 +75,8 @@ fn execution() -> Execution {
     }
 }
 
-fn event(name: &str, event: Event) -> EventEnvelope {
-    EventEnvelope {
+fn event(name: &str, event: Event) -> EvidenceEvent {
+    EvidenceEvent {
         schema_version: SCHEMA_VERSION,
         id: EventId::new(name).unwrap(),
         event,

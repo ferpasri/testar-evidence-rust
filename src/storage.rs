@@ -6,7 +6,7 @@ use fs2::FileExt;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ArtifactReference, Error, Event, EventEnvelope, Manifest, Result,
+    ArtifactReference, Error, Event, EvidenceEvent, Manifest, Result,
     StateModel,
 };
 
@@ -98,7 +98,7 @@ impl JsonlStore {
         &self.model
     }
 
-    pub fn record(&mut self, envelope: EventEnvelope) -> Result<bool> {
+    pub fn record(&mut self, envelope: EvidenceEvent) -> Result<bool> {
         self.ensure_writer_valid()?;
         if !self.model.validate(&envelope)? {
             return Ok(false);
@@ -269,7 +269,7 @@ fn replay(
         if record.last() != Some(&b'\n') {
             return Ok((model, length as u64));
         }
-        let envelope: EventEnvelope =
+        let envelope: EvidenceEvent =
             serde_json::from_slice(&record).map_err(|error| {
                 Error::InvalidRecord(format!(
                     "evidence.jsonl line {line}: {error}"
@@ -304,7 +304,7 @@ fn with_line_number(line: u64, error: Error) -> Error {
 
 fn verify_event_artifacts(
     directory: &Path,
-    envelope: &EventEnvelope,
+    envelope: &EvidenceEvent,
 ) -> Result<()> {
     if let Event::Observed(observation) = &envelope.event {
         for reference in &observation.artifacts {
@@ -361,7 +361,7 @@ mod tests {
         let mut store = JsonlStore::create(directory.path(), manifest).unwrap();
         store.log =
             File::open(directory.path().join("evidence.jsonl")).unwrap();
-        let envelope = EventEnvelope {
+        let envelope = EvidenceEvent {
             schema_version: SCHEMA_VERSION,
             id: EventId::new("event").unwrap(),
             event: Event::RunStarted(Run {

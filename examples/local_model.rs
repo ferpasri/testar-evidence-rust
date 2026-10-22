@@ -1,3 +1,5 @@
+mod support;
+
 use std::path::PathBuf;
 
 use serde_json::json;
@@ -6,34 +8,40 @@ use testar_evidence::*;
 fn record(
     store: &mut JsonlStore,
     sequence: &mut u64,
+    identity: &str,
     event: Event,
 ) -> Result<()> {
     // Give each recorded event a unique ID within this example.
     *sequence += 1;
-    store.record(EventEnvelope {
+    store.record(EvidenceEvent {
         schema_version: SCHEMA_VERSION,
-        id: EventId::new(format!("example:event:{sequence}"))?,
+        id: EventId::new(format!("example:{identity}:event:{sequence}"))?,
         event,
     })?;
     Ok(())
 }
 
 fn main() -> Result<()> {
-    // The first command-line argument selects where to save the model.
-    let directory =
-        std::env::args_os()
-            .nth(1)
-            .map(PathBuf::from)
-            .ok_or_else(|| {
-                Error::InvalidRecord(
-                    "provide a new model directory as the first argument"
-                        .into(),
-                )
-            })?;
+    let arguments: Vec<_> = std::env::args_os().collect();
+    let parent = arguments
+        .get(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target/traces"));
+    let sut = arguments
+        .get(2)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "demo".to_owned());
+    let objective = arguments
+        .get(3)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "submit-form".to_owned());
+    let directory = support::create_trace_directory(&parent, &sut, &objective)?;
+    let identity = uuid::Uuid::new_v4().to_string();
+    println!("Evidence: {}", directory.display());
     // Create the model directory and identify its data format.
     let manifest = Manifest {
         schema_version: SCHEMA_VERSION,
-        model: ModelId::new("example")?,
+        model: ModelId::new(format!("example:model:{identity}"))?,
     };
     let mut store = JsonlStore::create(&directory, manifest.clone())?;
     // Store a sample screenshot so an observation can reference it.
@@ -43,30 +51,35 @@ fn main() -> Result<()> {
         Some(1),
         Some(1),
     )?;
-    let run = RunId::new("example:run:1")?;
-    let action = ActionId::new("example:activate")?;
+    let run = RunId::new(format!("example:{identity}:run:1"))?;
+    let action = ActionId::new(format!("example:{identity}:activate"))?;
     let widget = WidgetId::new("login")?;
-    let source = ObservationId::new("example:observation:1")?;
-    let target = ObservationId::new("example:observation:2")?;
-    let execution = ExecutionId::new("example:execution:1")?;
+    let source =
+        ObservationId::new(format!("example:{identity}:observation:1"))?;
+    let target =
+        ObservationId::new(format!("example:{identity}:observation:2"))?;
+    let execution =
+        ExecutionId::new(format!("example:{identity}:execution:1"))?;
     let mut sequence = 0;
     // Start the run and define the action that will be recorded.
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::RunStarted(Run {
             id: run.clone(),
             producer: "standalone-example".into(),
-            source_run: "1".into(),
-            properties: PropertyMap::from([(
-                "sut.name".into(),
-                json!("example"),
-            )]),
+            source_run: identity.clone(),
+            properties: PropertyMap::from([
+                ("example.sut".into(), json!(sut)),
+                ("example.test_objective".into(), json!(objective)),
+            ]),
         }),
     )?;
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::ActionDefined(ActionDefinition {
             id: action.clone(),
             kind: "activate".into(),
@@ -74,7 +87,7 @@ fn main() -> Result<()> {
         }),
     )?;
     let state = ConcreteState {
-        id: ConcreteStateId::new("example:snapshot:1")?,
+        id: ConcreteStateId::new(format!("example:{identity}:snapshot:1"))?,
         properties: PropertyMap::from([("ui.title".into(), json!("Login"))]),
         widgets: vec![Widget {
             id: widget.clone(),
@@ -89,6 +102,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::Observed(Observation {
             id: source.clone(),
             run: run.clone(),
@@ -106,6 +120,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::ActionSelected(Execution {
             id: execution.clone(),
             run: run.clone(),
@@ -118,6 +133,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::ActionSubmitted {
             execution: execution.clone(),
             accepted: true,
@@ -125,7 +141,7 @@ fn main() -> Result<()> {
         },
     )?;
     let state = ConcreteState {
-        id: ConcreteStateId::new("example:snapshot:2")?,
+        id: ConcreteStateId::new(format!("example:{identity}:snapshot:2"))?,
         properties: PropertyMap::from([("ui.title".into(), json!("Welcome"))]),
         widgets: vec![],
         capture: CaptureScope::Filtered,
@@ -133,6 +149,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::Observed(Observation {
             id: target.clone(),
             run: run.clone(),
@@ -147,6 +164,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::ActionResult {
             execution,
             observation: target,
@@ -155,6 +173,7 @@ fn main() -> Result<()> {
     record(
         &mut store,
         &mut sequence,
+        &identity,
         Event::RunFinished {
             run,
             reason: "example complete".into(),
@@ -167,10 +186,13 @@ fn main() -> Result<()> {
     record(
         &mut reopened,
         &mut sequence,
+        &identity,
         Event::Checked(CheckResult {
-            run: RunId::new("example:run:1")?,
+            run: RunId::new(format!("example:{identity}:run:1"))?,
             target: CheckTarget::Observation {
-                observation: ObservationId::new("example:observation:2")?,
+                observation: ObservationId::new(format!(
+                    "example:{identity}:observation:2"
+                ))?,
             },
             rule: CheckRule {
                 id: "example:manual-review".into(),

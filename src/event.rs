@@ -22,7 +22,7 @@ impl Manifest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct EventEnvelope {
+pub struct EvidenceEvent {
     pub schema_version: u32,
     pub id: EventId,
     pub event: Event,

@@ -6,7 +6,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use tempfile::tempdir;
 use testar_evidence::{
-    Error, Event, EventEnvelope, EventId, JsonlStore, Manifest, RunStatus,
+    Error, Event, EventId, EvidenceEvent, JsonlStore, Manifest, RunStatus,
     StateModel,
 };
 
@@ -14,7 +14,7 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
-fn inputs(source: &Path) -> (Manifest, Vec<EventEnvelope>) {
+fn inputs(source: &Path) -> (Manifest, Vec<EvidenceEvent>) {
     let manifest =
         serde_json::from_value(read_json(&source.join("manifest.json")))
             .unwrap();
@@ -23,7 +23,7 @@ fn inputs(source: &Path) -> (Manifest, Vec<EventEnvelope>) {
         .lines()
         .map(|line| {
             let raw: Value = serde_json::from_str(line).unwrap();
-            let envelope: EventEnvelope =
+            let envelope: EvidenceEvent =
                 serde_json::from_value(raw.clone()).unwrap();
             assert_eq!(
                 serde_json::to_value(&envelope).unwrap(),
@@ -122,7 +122,7 @@ fn assert_evidence_preserved(
     store: &JsonlStore,
     directory: &Path,
     source: &Path,
-    accepted: &[EventEnvelope],
+    accepted: &[EvidenceEvent],
 ) {
     let persisted: Vec<Value> =
         fs::read_to_string(directory.join("evidence.jsonl"))

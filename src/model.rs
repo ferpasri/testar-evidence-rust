@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::event::validate_version;
 use crate::{
     ActionCandidate, ActionDefinition, ActionId, CheckResult, CheckTarget,
-    ConcreteState, ConcreteStateId, Error, Event, EventEnvelope, EventId,
+    ConcreteState, ConcreteStateId, Error, Event, EventId, EvidenceEvent,
     Execution, ExecutionId, Manifest, Observation, ObservationId, Result, Run,
     RunId,
 };
@@ -54,7 +54,7 @@ pub struct StateModel {
     executions: BTreeMap<ExecutionId, ExecutionRecord>,
     execution_order: Vec<ExecutionId>,
     checks: Vec<CheckResult>,
-    events: BTreeMap<EventId, EventEnvelope>,
+    events: BTreeMap<EventId, EvidenceEvent>,
 }
 
 impl StateModel {
@@ -78,7 +78,7 @@ impl StateModel {
         &self.manifest
     }
 
-    pub fn validate(&self, envelope: &EventEnvelope) -> Result<bool> {
+    pub fn validate(&self, envelope: &EvidenceEvent) -> Result<bool> {
         validate_version(envelope.schema_version)?;
         if let Some(previous) = self.events.get(&envelope.id) {
             if previous == envelope {
@@ -152,7 +152,7 @@ impl StateModel {
         Ok(true)
     }
 
-    pub fn apply(&mut self, envelope: EventEnvelope) -> Result<bool> {
+    pub fn apply(&mut self, envelope: EvidenceEvent) -> Result<bool> {
         if !self.validate(&envelope)? {
             return Ok(false);
         }

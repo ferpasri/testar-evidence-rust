@@ -2,7 +2,7 @@ use serde_json::json;
 use testar_evidence::{
     ActionCandidate, ActionDefinition, ActionId, CandidateScope, CaptureScope,
     CheckResult, CheckRule, CheckStatus, CheckTarget, ConcreteState,
-    ConcreteStateId, Error, Event, EventEnvelope, EventId, Execution,
+    ConcreteStateId, Error, Event, EventId, EvidenceEvent, Execution,
     ExecutionId, ExecutionStatus, ExpectedValue, Manifest, ModelId,
     Observation, ObservationId, PropertyMap, Run, RunId, RunStatus,
     SCHEMA_VERSION, StateModel,
@@ -16,8 +16,8 @@ fn model() -> StateModel {
     .unwrap()
 }
 
-fn envelope(id: &str, event: Event) -> EventEnvelope {
-    EventEnvelope {
+fn envelope(id: &str, event: Event) -> EvidenceEvent {
+    EvidenceEvent {
         schema_version: SCHEMA_VERSION,
         id: EventId::new(id).unwrap(),
         event,
