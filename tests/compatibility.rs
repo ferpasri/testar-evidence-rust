@@ -2,7 +2,7 @@ mod support;
 
 use serde_json::json;
 use tempfile::tempdir;
-use testar_state_model::*;
+use testar_evidence::*;
 
 fn shared_evidence() -> String {
     std::fs::read_to_string(

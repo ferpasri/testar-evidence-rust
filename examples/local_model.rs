@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde_json::json;
-use testar_state_model::*;
+use testar_evidence::*;
 
 fn record(
     store: &mut JsonlStore,

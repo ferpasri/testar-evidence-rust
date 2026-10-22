@@ -6,7 +6,7 @@ use crate::release::newest;
 use crate::{PreparedSpecs, Release, Result};
 
 const RELEASES: &str =
-    "https://api.github.com/repos/ferpasri/testar-state-model-specs/releases";
+    "https://api.github.com/repos/ferpasri/testar-evidence-specs/releases";
 const MAX_DOWNLOAD: u64 = 64 * 1024 * 1024;
 
 fn download(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
@@ -15,7 +15,7 @@ fn download(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     }
     let bytes = agent
         .get(url)
-        .header("User-Agent", "testar-state-model-conformance")
+        .header("User-Agent", "testar-evidence-conformance")
         .header("Accept", "application/vnd.github+json")
         .call()?
         .body_mut()

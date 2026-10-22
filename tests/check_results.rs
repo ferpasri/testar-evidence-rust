@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 use tempfile::tempdir;
-use testar_state_model::*;
+use testar_evidence::*;
 
 fn raw_check() -> Value {
     json!({

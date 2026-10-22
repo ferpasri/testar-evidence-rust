@@ -468,7 +468,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "testar-state-model"
+name = "testar-evidence"
 version = "0.2.1"
 dependencies = [
  "fs2",

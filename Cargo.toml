@@ -1,10 +1,10 @@
 [package]
-name = "testar-state-model"
+name = "testar-evidence"
 version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 license = "BSD-3-Clause"
-description = "Framework-independent state models and portable execution evidence"
+description = "Framework-independent recording and reading of portable test execution evidence"
 readme = "README.md"
 
 [dependencies]

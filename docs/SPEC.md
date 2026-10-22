@@ -2,7 +2,7 @@
 
 The library records what a testing tool observed, which actions it discovered, what it executed, and the outcomes reported by its test oracles. An adapter translates tool data into these generic records.
 
-The [shared model semantics](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/model-semantics.md) define the evidence meaning. This document describes the Rust API and its implemented behavior.
+The [shared model semantics](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/model-semantics.md) define the evidence meaning. This document describes the Rust API and its implemented behavior.
 
 ## Records and properties
 
@@ -33,7 +33,7 @@ IDs and property names are nonblank strings without control characters. The prod
 
 Capture scope records complete, filtered, or unavailable widget information. A complete widget tree can still contain only selected properties. The capture description identifies which properties are collected and, if known, explains exclusions or limitations.
 
-`PropertyMap` preserves supplied JSON values, including nested objects, lists, empty strings, and explicit nulls. Missing keys remain distinct from recorded null values. Optional `evidence.capture`, `evidence.omitted_properties`, and `evidence.property_aliases` values use these maps as described in the [shared capture conventions](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/capture-evidence.md).
+`PropertyMap` preserves supplied JSON values, including nested objects, lists, empty strings, and explicit nulls. Missing keys remain distinct from recorded null values. Optional `evidence.capture`, `evidence.omitted_properties`, and `evidence.property_aliases` values use these maps as described in the [shared capture conventions](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/capture-evidence.md).
 
 The adapter supplies properties with their source meanings. State-level `ui.title` is the application's page, screen, or window title; `ui.url` is the full captured page address. A widget's actual title attribute, visible text, and accessible name are distinct properties. A common property name requires a verified source meaning. The library retains the supplied names and values.
 

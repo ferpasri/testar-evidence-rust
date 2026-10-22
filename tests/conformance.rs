@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use tempfile::tempdir;
-use testar_state_model::{
+use testar_evidence::{
     Error, Event, EventEnvelope, EventId, JsonlStore, Manifest, RunStatus,
     StateModel,
 };

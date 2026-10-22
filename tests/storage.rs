@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::json;
 use tempfile::tempdir;
-use testar_state_model::{
+use testar_evidence::{
     ActionCandidate, ActionDefinition, ActionId, ArtifactReference,
     CandidateScope, CaptureScope, ConcreteState, ConcreteStateId, Error, Event,
     EventEnvelope, EventId, Execution, ExecutionId, JsonlStore, Manifest,

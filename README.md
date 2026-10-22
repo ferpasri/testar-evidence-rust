@@ -1,6 +1,6 @@
-# TESTAR state model for Rust
+# TESTAR evidence for Rust
 
-A standalone Rust library for recording test execution evidence in the shared [TESTAR state model format](https://github.com/ferpasri/testar-state-model-specs).
+A standalone Rust library for recording test execution evidence in the shared [TESTAR evidence format](https://github.com/ferpasri/testar-evidence-specs).
 
 Tool adapters supply runs, observed states, widgets, properties, discovered actions, executions, screenshots, and test oracle results. The library validates those records, saves portable model directories, and exposes queries over the execution history.
 
@@ -8,7 +8,7 @@ Every visit remains a separate observation. Completed executions connect their s
 
 Captured properties and oracle evaluations are separate evidence. Check results identify what was evaluated, the rule, its outcome, and any reported reading.
 
-The adapter supplies captured values and describes which widgets and properties it collected. The library preserves optional capture descriptions, known omissions, and declared property aliases. The [shared capture conventions](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/capture-evidence.md) explain their meaning.
+The adapter supplies captured values and describes which widgets and properties it collected. The library preserves optional capture descriptions, known omissions, and declared property aliases. The [shared capture conventions](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/capture-evidence.md) explain their meaning.
 
 ## Release versions
 
@@ -32,10 +32,10 @@ A consuming Cargo project can declare a local dependency:
 
 ```toml
 [dependencies]
-testar-state-model = { path = "../testar-state-model-rust", version = "0.2.1" }
+testar-evidence = { path = "../testar-evidence-rust", version = "0.2.1" }
 ```
 
-The public API is exported by `testar_state_model`.
+The public API is exported by `testar_evidence`.
 
 ## Example
 
@@ -51,9 +51,9 @@ Use a new output directory for each example run. Open the generated model direct
 
 Each case supplies an input trace: `manifest.json`, `evidence.jsonl` (one recorded event per line), and referenced artifacts. The library reads the events to reconstruct a model in memory. Tests compare a summary of that model with `expected.json`, which describes the expected records or rejection. Tests also verify complete accepted event contents and artifact bytes. The reconstructed model preserves concrete evidence; it is separate from any later abstract or merged model.
 
-See the shared [input trace, reconstructed model, and expected result explanation](https://github.com/ferpasri/testar-state-model-specs/blob/main/conformance/README.md#input-trace-reconstructed-model-and-expected-result) for the file roles, an event-sequence example, and reader/producer test behavior.
+See the shared [input trace, reconstructed model, and expected result explanation](https://github.com/ferpasri/testar-evidence-specs/blob/main/conformance/README.md#input-trace-reconstructed-model-and-expected-result) for the file roles, an event-sequence example, and reader/producer test behavior.
 
-The preparation command queries the public [specs releases](https://github.com/ferpasri/testar-state-model-specs/releases). It selects the newest publication by `published_at`, including prereleases and excluding draft or unpublished entries. Ties use the release ID. Publication order determines the selection.
+The preparation command queries the public [specs releases](https://github.com/ferpasri/testar-evidence-specs/releases). It selects the newest publication by `published_at`, including prereleases and excluding draft or unpublished entries. Ties use the release ID. Publication order determines the selection.
 
 Preparation downloads the release archive over HTTPS and extracts its conformance files into the ignored `target/conformance/` directory. `current.json` records the selected release and locally computed SHA-256 checksums. Tests verify those checksums to detect changes to cached files.
 
@@ -65,6 +65,6 @@ Tests discover every released case directory. Reader tests load supplied evidenc
 
 ## Documents
 
-- [Shared model semantics](https://github.com/ferpasri/testar-state-model-specs/blob/main/docs/model-semantics.md): the meaning of generic evidence.
+- [Shared model semantics](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/model-semantics.md): the meaning of generic evidence.
 - [Implementation specification](docs/SPEC.md): this library's API and implemented behavior.
 - [TODO](TODO.md): planned work.

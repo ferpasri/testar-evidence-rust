@@ -1,5 +1,5 @@
 use serde_json::json;
-use testar_state_model::{
+use testar_evidence::{
     ActionCandidate, ActionId, ArtifactReference, CandidateScope, CaptureScope,
     CheckResult, CheckRule, CheckStatus, CheckTarget, ConcreteState,
     ConcreteStateId, Error, ExpectedValue, Observation, ObservationId,
