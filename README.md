@@ -49,6 +49,10 @@ Use a new output directory for each example run. Open the generated model direct
 
 ## Shared conformance data
 
+Each case supplies an input trace: `manifest.json`, `evidence.jsonl` (one recorded event per line), and referenced artifacts. The library reads the events to reconstruct a model in memory. Tests compare a summary of that model with `expected.json`, which describes the expected records or rejection. Tests also verify complete accepted event contents and artifact bytes. The reconstructed model preserves concrete evidence; it is separate from any later abstract or merged model.
+
+See the shared [input trace, reconstructed model, and expected result explanation](https://github.com/ferpasri/testar-state-model-specs/blob/main/conformance/README.md#input-trace-reconstructed-model-and-expected-result) for the file roles, an event-sequence example, and reader/producer test behavior.
+
 The preparation command queries the public [specs releases](https://github.com/ferpasri/testar-state-model-specs/releases). It selects the newest publication by `published_at`, including prereleases and excluding draft or unpublished entries. Ties use the release ID. Publication order determines the selection.
 
 Preparation downloads the release archive over HTTPS and extracts its conformance files into the ignored `target/conformance/` directory. `current.json` records the selected release and locally computed SHA-256 checksums. Tests verify those checksums to detect changes to cached files.
