@@ -32,7 +32,7 @@ A consuming Cargo project can declare a local dependency:
 
 ```toml
 [dependencies]
-testar-evidence = { path = "../testar-evidence-rust", version = "0.2.1" }
+testar-evidence = { path = "../testar-evidence-rust", version = "0.2.2" }
 ```
 
 The public API is exported by `testar_evidence`.
@@ -45,7 +45,11 @@ The public API is exported by `testar_evidence`.
 cargo run --locked --example local_model -- target/traces demo submit-form
 ```
 
-Arguments select the parent directory, SUT label, and test objective label. Each run reserves its own directory, such as `target/traces/demo_submit-form_trace-2026-10-22_15-30-12-123/`. A collision adds a numeric suffix. Each run also has distinct model and run identities. Labels are retained in run properties, while their filename versions are sanitized and limited to 32 characters each. The example uses demonstration records. Open a complete generated trace directory in the dashboard.
+Arguments select the parent directory, SUT label, optional test objective, and optional origin. The fourth argument can name the source, for example `"Example script"`. Without a test objective, the filename uses `run` and the objective property is omitted. Each run reserves its own directory, such as `target/traces/demo_submit-form_trace-2026-10-22_15-30-12-123/`. A collision adds a numeric suffix. Each run also has distinct model and run identities. Labels are retained in run properties, while their filename versions are sanitized and limited to 32 characters each. The example uses demonstration records. Open a complete generated trace directory in the dashboard.
+
+## Run metadata
+
+Run properties support optional origin, test objective, adapter name, and adapter version using the [shared run metadata names](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/run-metadata.md). Supplied descriptions keep their original text; omitted descriptions stay omitted. See [the implementation specification](docs/SPEC.md#run-metadata) for their use.
 
 ## Reading and inspecting saved traces
 

@@ -1,5 +1,6 @@
 # TODO
 
+- [x] Preserve shared run metadata and verify supplied, omitted, and flexible-origin cases from specs v0.2.2.
 - [x] Implement generic records, properties, discovered candidates, and concrete execution links.
 - [x] Record test oracle evaluations with explicit targets and readings.
 - [x] Implement portable JSONL storage, artifacts, replay, writer locking, and tail recovery.

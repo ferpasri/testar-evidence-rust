@@ -5,25 +5,25 @@ use std::path::{Path, PathBuf};
 pub fn create_trace_directory(
     parent: &Path,
     sut: &str,
-    objective: &str,
+    test_objective: &str,
 ) -> io::Result<PathBuf> {
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%d_%H-%M-%S-%3f")
         .to_string();
-    create_at(parent, sut, objective, &timestamp)
+    create_at(parent, sut, test_objective, &timestamp)
 }
 
 pub fn create_at(
     parent: &Path,
     sut: &str,
-    objective: &str,
+    test_objective: &str,
     timestamp: &str,
 ) -> io::Result<PathBuf> {
     fs::create_dir_all(parent)?;
     let name = format!(
         "{}_{}_trace-{timestamp}",
         label(sut, "sut"),
-        label(objective, "objective")
+        label(test_objective, "objective")
     );
     let mut suffix = 1_u64;
     loop {

@@ -29,6 +29,21 @@ Widget IDs are local to their snapshot. Parents refer to widgets in that snapsho
 
 IDs and property names are nonblank strings without control characters. The producer supplies IDs that distinguish its records across runs and sources.
 
+## Run metadata
+
+Run properties retain the optional [shared metadata](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/run-metadata.md):
+
+| Property | Meaning |
+| --- | --- |
+| `evidence.origin` | The caller's descriptive tool, script, or integration name. |
+| `evidence.test_objective` | What the caller intends to investigate or verify. |
+| `evidence.adapter` | The adapter name, supplied by the adapter when known. |
+| `evidence.adapter_version` | The adapter's reported version, when known. |
+
+Callers and adapters supply nonblank strings when information is available. The library preserves their original text, including spacing and Unicode, through recording, replay, and reopening. Omitted properties remain omitted. Origin labels are descriptive strings; there is no predefined list of execution styles or tools.
+
+The required `producer` field identifies the component producing evidence. An optional origin describes the caller, while adapter properties describe the translator. Generic library code retains the information supplied by an integration; the adapter knows its own identity and version. A test objective describes intent; check results record the conditions actually evaluated and their outcomes. Run identities keep executions separate even when their descriptions match.
+
 ## Capture and property meanings
 
 Capture scope records complete, filtered, or unavailable widget information. A complete widget tree can still contain only selected properties. The capture description identifies which properties are collected and, if known, explains exclusions or limitations.
@@ -53,7 +68,7 @@ Each `EvidenceEvent` describes one reported event together with its stable ident
 
 | Event | Recorded behavior |
 | --- | --- |
-| `run_started` | Registers the run and its origin. |
+| `run_started` | Registers the run, producer, and supplied properties. |
 | `action_defined` | Registers an action definition whose ID retains the same content. |
 | `observed` | Records a visit, with sequence numbers increasing within its run. |
 | `action_selected` | Selects a matching action/target pair from the latest observation. |
@@ -94,7 +109,9 @@ The store exposes its model through a shared reference. Updating the standalone 
 
 ## Example trace directories
 
-The example takes a parent directory followed by optional SUT and test objective labels. It reserves a new directory named `<sut>_<objective>_trace-<local timestamp>`, including milliseconds. Labels are made safe for filenames and limited to 32 characters each. A collision adds `-2`, `-3`, and so on. Each run also receives distinct model and run identities. These labels describe demonstration records; they do not launch an application or choose a test script. The storage API continues accepting an explicit directory.
+The example takes a parent directory followed by optional SUT and test objective labels. It reserves a new directory named `<sut>_<test_objective>_trace-<local timestamp>`, including milliseconds. Labels are made safe for filenames and limited to 32 characters each. A collision adds `-2`, `-3`, and so on. Each run also receives distinct model and run identities. These labels describe demonstration records; they do not launch an application or choose a test script. The storage API continues accepting an explicit directory.
+
+The example accepts an optional origin and records it as `evidence.origin`. A supplied test objective is recorded as `evidence.test_objective`. An omitted description stays absent from run properties. Filename fallback labels are separate from these descriptions.
 
 ## Storage
 
@@ -113,3 +130,5 @@ The [README](../README.md#shared-conformance-data) describes preparation of the 
 Reader tests compare accepted records or rejected targets with the released expectations. Producer tests write equivalent evidence through the public API, compare the complete persisted event payloads and artifact bytes, check identical retries and rejection behavior, and reopen the accepted evidence. Released cases exercise capture descriptions and aliases, unselected candidates, scripted executions, rejected submissions, and temporal reports alongside targeted property evaluations.
 
 Unit tests cover record validation, candidate preservation, repeated visits, execution ordering, evaluation targets, event retries, writer locking, artifact integrity, and recovery.
+
+Reader and producer conformance checks include supplied run metadata, omitted metadata, and flexible origin labels. Full event comparisons verify exact descriptions and omitted keys as well as the expected model summary.

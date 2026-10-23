@@ -31,11 +31,32 @@ fn main() -> Result<()> {
         .get(2)
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_else(|| "demo".to_owned());
-    let objective = arguments
+    let test_objective = arguments
         .get(3)
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "submit-form".to_owned());
-    let directory = support::create_trace_directory(&parent, &sut, &objective)?;
+        .map(|value| value.to_string_lossy().into_owned());
+    let origin = arguments
+        .get(4)
+        .map(|value| value.to_string_lossy().into_owned());
+    let mut properties =
+        PropertyMap::from([("example.sut".into(), json!(sut))]);
+    for (key, value) in [
+        ("evidence.origin", origin.as_deref()),
+        ("evidence.test_objective", test_objective.as_deref()),
+    ] {
+        if let Some(value) = value {
+            if value.trim().is_empty() {
+                return Err(Error::InvalidRecord(
+                    "Run descriptions must be nonblank".into(),
+                ));
+            }
+            properties.insert(key.into(), json!(value));
+        }
+    }
+    let directory = support::create_trace_directory(
+        &parent,
+        &sut,
+        test_objective.as_deref().unwrap_or("run"),
+    )?;
     let identity = uuid::Uuid::new_v4().to_string();
     println!("Evidence: {}", directory.display());
     // Create the model directory and identify its data format.
@@ -70,10 +91,7 @@ fn main() -> Result<()> {
             id: run.clone(),
             producer: "standalone-example".into(),
             source_run: identity.clone(),
-            properties: PropertyMap::from([
-                ("example.sut".into(), json!(sut)),
-                ("example.test_objective".into(), json!(objective)),
-            ]),
+            properties,
         }),
     )?;
     record(
