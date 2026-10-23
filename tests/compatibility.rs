@@ -15,21 +15,21 @@ fn shared_evidence() -> String {
 fn manifest() -> Manifest {
     Manifest {
         schema_version: SCHEMA_VERSION,
-        model: ModelId::new("example").unwrap(),
+        evidence_id: EvidenceId::new("example").unwrap(),
     }
 }
 
 #[test]
-fn shared_evidence_replays_into_the_state_model() {
-    let mut model = StateModel::new(manifest()).unwrap();
+fn shared_evidence_replays_into_reconstructed_evidence() {
+    let mut evidence = ReconstructedEvidence::new(manifest()).unwrap();
     for line in shared_evidence().lines() {
         let envelope: EvidenceEvent = serde_json::from_str(line).unwrap();
-        assert!(model.apply(envelope).unwrap());
+        assert!(evidence.apply(envelope).unwrap());
     }
-    assert_eq!(model.event_count(), 3);
-    assert_eq!(model.concrete_state_count(), 1);
-    assert_eq!(model.link_count(), 0);
-    assert_eq!(model.action_count(), 1);
+    assert_eq!(evidence.event_count(), 4);
+    assert_eq!(evidence.recorded_state_count(), 1);
+    assert_eq!(evidence.recorded_transition_count(), 0);
+    assert_eq!(evidence.action_description_count(), 1);
 }
 
 #[test]
@@ -40,13 +40,17 @@ fn floating_point_evidence_reopens_exactly_and_retry_stays_idempotent() {
         serde_json::from_str(shared_evidence().lines().next().unwrap())
             .unwrap();
     store.record(started).unwrap();
+    let sequence: EvidenceEvent =
+        serde_json::from_str(shared_evidence().lines().nth(1).unwrap())
+            .unwrap();
+    store.record(sequence).unwrap();
     let observation = Observation {
         id: ObservationId::new("measurement-1").unwrap(),
-        run: RunId::new("example:run:1").unwrap(),
-        sequence: 1,
+        test_sequence: TestSequenceId::new("example:run:1").unwrap(),
+        observation_index: 1,
         timestamp_micros: 1,
-        state: ConcreteState {
-            id: ConcreteStateId::new("measurement-snapshot").unwrap(),
+        recorded_state: RecordedState {
+            id: RecordedStateId::new("measurement-recorded_state").unwrap(),
             properties: PropertyMap::from([(
                 "measurements".into(),
                 json!([
@@ -58,19 +62,19 @@ fn floating_point_evidence_reopens_exactly_and_retry_stays_idempotent() {
             widgets: vec![],
             capture: CaptureScope::Complete,
         },
-        candidate_scope: CandidateScope::Unknown,
-        candidates: vec![],
+        available_action_scope: AvailableActionScope::Unknown,
+        available_actions: vec![],
         artifacts: vec![],
     };
     let envelope = EvidenceEvent {
         schema_version: SCHEMA_VERSION,
         id: EventId::new("measurement-event").unwrap(),
-        event: Event::Observed(observation.clone()),
+        event: Event::ObservationRecorded(observation.clone()),
     };
     store.record(envelope.clone()).unwrap();
     drop(store);
     let mut reopened = JsonlStore::open(directory.path()).unwrap();
-    let actual = reopened.model().observation(&observation.id).unwrap();
+    let actual = reopened.evidence().observation(&observation.id).unwrap();
     assert_eq!(actual, &observation);
     assert!(!reopened.record(envelope).unwrap());
 }

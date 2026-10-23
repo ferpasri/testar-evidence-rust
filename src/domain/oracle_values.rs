@@ -35,8 +35,8 @@ impl<'de> Deserialize<'de> for ExpectedValue {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum CheckReading {
+#[serde(tag = "value_status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ObservedValue {
     Value { value: Value },
     Absent {},
     Unknown {},
@@ -50,4 +50,14 @@ where
     T: Deserialize<'de>,
 {
     T::deserialize(deserializer).map(Some)
+}
+
+pub(super) fn deserialize_nullable<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }

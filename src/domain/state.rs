@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::properties::validate_properties;
-use super::{ConcreteStateId, PropertyMap, WidgetId};
+use super::{PropertyMap, RecordedStateId, WidgetId};
 use crate::error::{Error, Result};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -15,8 +15,10 @@ pub enum CaptureScope {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Widget {
     pub id: WidgetId,
+    #[serde(deserialize_with = "super::oracle_values::deserialize_nullable")]
     pub parent: Option<WidgetId>,
     pub properties: PropertyMap,
 }
@@ -35,14 +37,15 @@ impl Widget {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ConcreteState {
-    pub id: ConcreteStateId,
+#[serde(deny_unknown_fields)]
+pub struct RecordedState {
+    pub id: RecordedStateId,
     pub properties: PropertyMap,
     pub widgets: Vec<Widget>,
     pub capture: CaptureScope,
 }
 
-impl ConcreteState {
+impl RecordedState {
     pub fn validate(&self) -> Result<()> {
         validate_properties(&self.properties)?;
         if self.capture == CaptureScope::Unavailable && !self.widgets.is_empty()
@@ -57,7 +60,7 @@ impl ConcreteState {
             widget.validate()?;
             if widget_indices.insert(&widget.id, index).is_some() {
                 return Err(Error::Conflict(format!(
-                    "duplicate widget {} in concrete state {}",
+                    "duplicate widget {} in recorded state {}",
                     widget.id, self.id
                 )));
             }

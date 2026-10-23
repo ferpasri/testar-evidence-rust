@@ -6,21 +6,33 @@ use fs2::FileExt;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ArtifactReference, Error, Event, EvidenceEvent, Manifest, Result,
-    StateModel,
+    ArtifactReference, Error, Event, EvidenceEvent, ReconstructedEvidence, Manifest,
+    Result,
 };
 
 pub struct JsonlStore {
     directory: PathBuf,
     _lock: File,
     log: File,
-    model: StateModel,
+    evidence: ReconstructedEvidence,
     writer_valid: bool,
+}
+
+pub struct EvidenceReader;
+
+impl EvidenceReader {
+    pub fn read(path: impl AsRef<Path>) -> Result<ReconstructedEvidence> {
+        let directory = fs::canonicalize(path.as_ref())?;
+        let manifest = read_manifest(&directory)?;
+        manifest.validate()?;
+        let mut log = File::open(directory.join("evidence.jsonl"))?;
+        replay(&directory, &mut log, manifest).map(|(evidence, _)| evidence)
+    }
 }
 
 impl JsonlStore {
     pub fn create(path: impl AsRef<Path>, manifest: Manifest) -> Result<Self> {
-        let model = StateModel::new(manifest)?;
+        let evidence = ReconstructedEvidence::new(manifest)?;
         fs::create_dir_all(path.as_ref())?;
         let directory = fs::canonicalize(path.as_ref())?;
         let lock = acquire_lock(&directory)?;
@@ -28,7 +40,7 @@ impl JsonlStore {
         let log_path = directory.join("evidence.jsonl");
         if manifest_path.try_exists()? || log_path.try_exists()? {
             return Err(Error::Conflict(
-                "model files already exist; open the model instead of creating it".into(),
+                "evidence files already exist; open the evidence instead of creating it".into(),
             ));
         }
 
@@ -36,7 +48,7 @@ impl JsonlStore {
             .write(true)
             .create_new(true)
             .open(manifest_path)?;
-        serde_json::to_writer_pretty(&mut manifest_file, model.manifest())?;
+        serde_json::to_writer_pretty(&mut manifest_file, evidence.manifest())?;
         manifest_file.write_all(b"\n")?;
         manifest_file.flush()?;
         manifest_file.sync_all()?;
@@ -47,7 +59,7 @@ impl JsonlStore {
             directory,
             _lock: lock,
             log,
-            model,
+            evidence,
             writer_valid: true,
         })
     }
@@ -60,7 +72,8 @@ impl JsonlStore {
             .read(true)
             .append(true)
             .open(directory.join("evidence.jsonl"))?;
-        let (model, incomplete_bytes) = replay(&directory, &mut log, manifest)?;
+        let (evidence, incomplete_bytes) =
+            replay(&directory, &mut log, manifest)?;
         if incomplete_bytes != 0 {
             return Err(Error::InvalidRecord(format!(
                 "evidence.jsonl has an incomplete final fragment ({incomplete_bytes} bytes); \
@@ -72,7 +85,7 @@ impl JsonlStore {
             directory,
             _lock: lock,
             log,
-            model,
+            evidence,
             writer_valid: true,
         })
     }
@@ -94,13 +107,13 @@ impl JsonlStore {
         Ok(incomplete_bytes)
     }
 
-    pub fn model(&self) -> &StateModel {
-        &self.model
+    pub fn evidence(&self) -> &ReconstructedEvidence {
+        &self.evidence
     }
 
     pub fn record(&mut self, envelope: EvidenceEvent) -> Result<bool> {
         self.ensure_writer_valid()?;
-        if !self.model.validate(&envelope)? {
+        if !self.evidence.validate(&envelope)? {
             return Ok(false);
         }
         verify_event_artifacts(&self.directory, &envelope)?;
@@ -112,7 +125,7 @@ impl JsonlStore {
         }
 
         // Replay is the authority if an acknowledged append cannot be projected.
-        match self.model.apply(envelope) {
+        match self.evidence.apply(envelope) {
             Ok(applied) => Ok(applied),
             Err(error) => {
                 self.writer_valid = false;
@@ -134,8 +147,8 @@ impl JsonlStore {
         &mut self,
         bytes: &[u8],
         media_type: impl Into<String>,
-        width: Option<u32>,
-        height: Option<u32>,
+        width: Option<u64>,
+        height: Option<u64>,
     ) -> Result<ArtifactReference> {
         self.ensure_writer_valid()?;
         let digest = sha256(bytes);
@@ -254,8 +267,8 @@ fn replay(
     directory: &Path,
     log: &mut File,
     manifest: Manifest,
-) -> Result<(StateModel, u64)> {
-    let mut model = StateModel::new(manifest)?;
+) -> Result<(ReconstructedEvidence, u64)> {
+    let mut evidence = ReconstructedEvidence::new(manifest)?;
     let mut reader = BufReader::new(log);
     let mut record = Vec::new();
     let mut line = 0u64;
@@ -263,11 +276,11 @@ fn replay(
         record.clear();
         let length = reader.read_until(b'\n', &mut record)?;
         if length == 0 {
-            return Ok((model, 0));
+            return Ok((evidence, 0));
         }
         line += 1;
         if record.last() != Some(&b'\n') {
-            return Ok((model, length as u64));
+            return Ok((evidence, length as u64));
         }
         let envelope: EvidenceEvent =
             serde_json::from_slice(&record).map_err(|error| {
@@ -277,7 +290,7 @@ fn replay(
             })?;
         verify_event_artifacts(directory, &envelope)
             .map_err(|error| with_line_number(line, error))?;
-        model
+        evidence
             .apply(envelope)
             .map_err(|error| with_line_number(line, error))?;
     }
@@ -292,12 +305,15 @@ fn with_line_number(line: u64, error: Error) -> Error {
         Error::UnknownReference(message) => {
             Error::UnknownReference(format!("{location}: {message}"))
         }
-        Error::InvalidCheckTarget { field, message } => {
-            Error::InvalidCheckTarget {
-                field,
-                message: format!("{location}: {message}"),
-            }
-        }
+        Error::Validation {
+            code,
+            field,
+            message,
+        } => Error::Validation {
+            code,
+            field,
+            message: format!("{location}: {message}"),
+        },
         error => Error::InvalidRecord(format!("{location}: {error}")),
     }
 }
@@ -306,7 +322,7 @@ fn verify_event_artifacts(
     directory: &Path,
     envelope: &EvidenceEvent,
 ) -> Result<()> {
-    if let Event::Observed(observation) = &envelope.event {
+    if let Event::ObservationRecorded(observation) = &envelope.event {
         for reference in &observation.artifacts {
             read_artifact(directory, reference)?;
         }
@@ -334,7 +350,7 @@ fn read_artifact(
 fn ensure_inside_directory(directory: &Path, path: &Path) -> Result<()> {
     if !path.starts_with(directory) {
         return Err(Error::InvalidRecord(
-            "artifact path resolves outside the model directory".into(),
+            "artifact path resolves outside the evidence directory".into(),
         ));
     }
     Ok(())
@@ -349,14 +365,16 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{EventId, ModelId, PropertyMap, Run, RunId, SCHEMA_VERSION};
+    use crate::{
+        EventId, EvidenceId, PropertyMap, SCHEMA_VERSION, TestRun, TestRunId,
+    };
 
     #[test]
     fn failed_append_invalidates_the_writer_without_applying_the_event() {
         let directory = tempdir().unwrap();
         let manifest = Manifest {
             schema_version: SCHEMA_VERSION,
-            model: ModelId::new("model").unwrap(),
+            evidence_id: EvidenceId::new("evidence").unwrap(),
         };
         let mut store = JsonlStore::create(directory.path(), manifest).unwrap();
         store.log =
@@ -364,8 +382,8 @@ mod tests {
         let envelope = EvidenceEvent {
             schema_version: SCHEMA_VERSION,
             id: EventId::new("event").unwrap(),
-            event: Event::RunStarted(Run {
-                id: RunId::new("run").unwrap(),
+            event: Event::TestRunStarted(TestRun {
+                id: TestRunId::new("run").unwrap(),
                 producer: "test".into(),
                 source_run: "0".into(),
                 properties: PropertyMap::new(),
@@ -373,7 +391,7 @@ mod tests {
         };
 
         assert!(matches!(store.record(envelope.clone()), Err(Error::Io(_))));
-        assert_eq!(store.model().event_count(), 0);
+        assert_eq!(store.evidence().event_count(), 0);
         let error = store.record(envelope).unwrap_err();
         assert!(error.to_string().contains("store writer is invalid"));
         assert!(store.flush().is_err());
@@ -381,7 +399,7 @@ mod tests {
         assert_eq!(
             JsonlStore::open(directory.path())
                 .unwrap()
-                .model()
+                .evidence()
                 .event_count(),
             0
         );

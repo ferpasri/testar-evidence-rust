@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 use super::properties::validate_property_name;
-use super::{ExecutionId, ObservationId, WidgetId};
+use super::{ActionExecutionId, ObservationId, WidgetId};
 use crate::Result;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum CheckTarget {
-    Run {},
+#[serde(tag = "target_type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OracleTarget {
+    TestRun {},
+    TestSequence {},
     Observation {
         observation: ObservationId,
     },
@@ -24,16 +25,16 @@ pub enum CheckTarget {
         widget: WidgetId,
         property: String,
     },
-    Execution {
-        execution: ExecutionId,
+    ActionExecution {
+        action_execution: ActionExecutionId,
     },
-    Sequence {
-        from_observation: ObservationId,
-        to_observation: ObservationId,
+    ObservationRange {
+        first_observation: ObservationId,
+        last_observation: ObservationId,
     },
 }
 
-impl CheckTarget {
+impl OracleTarget {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::StateProperty { property, .. }

@@ -4,13 +4,14 @@ use super::properties::validate_text;
 use crate::error::{Error, Result};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactReference {
     pub id: String,
     pub path: String,
     pub media_type: String,
     pub sha256: String,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
+    pub width: Option<u64>,
+    pub height: Option<u64>,
 }
 
 impl ArtifactReference {
@@ -19,16 +20,13 @@ impl ArtifactReference {
         validate_text(&self.media_type, "artifact media type")?;
         validate_artifact_path(&self.path)?;
         if self.sha256.len() != 64
-            || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !self.sha256.bytes().all(|byte| {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            })
         {
             return Err(Error::InvalidRecord(
                 "artifact SHA-256 must contain 64 hexadecimal characters"
                     .into(),
-            ));
-        }
-        if self.width == Some(0) || self.height == Some(0) {
-            return Err(Error::InvalidRecord(
-                "artifact dimensions must be positive when supplied".into(),
             ));
         }
         Ok(())

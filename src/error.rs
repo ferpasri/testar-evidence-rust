@@ -3,7 +3,8 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     InvalidRecord(String),
-    InvalidCheckTarget {
+    Validation {
+        code: &'static str,
         field: &'static str,
         message: String,
     },
@@ -15,14 +16,36 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+impl Error {
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Validation { code, .. } => code,
+            Self::InvalidRecord(_) => "invalid_record",
+            Self::Conflict(_) => "conflict",
+            Self::UnknownReference(_) => "invalid_reference",
+            Self::Io(_) => "io_error",
+            Self::Json(_) => "invalid_json",
+        }
+    }
+
+    pub fn field(&self) -> Option<&str> {
+        match self {
+            Self::Validation { field, .. } => Some(field),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Validation {
+                code,
+                field,
+                message,
+            } => write!(formatter, "{code} at {field}: {message}"),
             Self::InvalidRecord(message) => {
                 write!(formatter, "invalid record: {message}")
-            }
-            Self::InvalidCheckTarget { field, message } => {
-                write!(formatter, "invalid check target at {field}: {message}")
             }
             Self::Conflict(message) => {
                 write!(formatter, "conflicting record: {message}")

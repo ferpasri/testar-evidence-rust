@@ -1,22 +1,27 @@
 mod action;
-mod check_target;
-mod check_values;
-mod checks;
 mod evidence;
 mod ids;
 mod observation;
+mod oracle_target;
+mod oracle_values;
+mod oracles;
 mod properties;
 mod state;
 
-pub use action::{ActionCandidate, ActionDefinition, Execution};
-pub use check_target::CheckTarget;
-pub use check_values::{CheckReading, ExpectedValue};
-pub use checks::{CheckResult, CheckRule, CheckStatus};
+pub use action::{
+    ActionDescription, ActionExecution, ActionExecutionResult, ActionOutcome,
+    AvailableAction,
+};
 pub use evidence::ArtifactReference;
 pub use ids::{
-    ActionId, ConcreteStateId, EventId, ExecutionId, ModelId, ObservationId,
-    RunId, WidgetId,
+    ActionDescriptionId, ActionExecutionId, EventId, EvidenceId, ObservationId,
+    RecordedStateId, TestRunId, TestSequenceId, WidgetId,
 };
-pub use observation::{CandidateScope, Observation, Run};
+pub use observation::{
+    AvailableActionScope, Observation, TestRun, TestSequence,
+};
+pub use oracle_target::OracleTarget;
+pub use oracle_values::{ExpectedValue, ObservedValue};
+pub use oracles::{Oracle, OracleResult, OracleSeverity, OracleStatus};
 pub use properties::PropertyMap;
-pub use state::{CaptureScope, ConcreteState, Widget};
+pub use state::{CaptureScope, RecordedState, Widget};

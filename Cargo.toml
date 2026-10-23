@@ -1,6 +1,6 @@
 [package]
 name = "testar-evidence"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "BSD-3-Clause"
@@ -10,7 +10,7 @@ readme = "README.md"
 [dependencies]
 fs2 = "0.4.3"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.145", features = ["float_roundtrip"] }
+serde_json = { version = "1.0.145", features = ["float_roundtrip", "arbitrary_precision"] }
 sha2 = "0.10.9"
 
 [dev-dependencies]

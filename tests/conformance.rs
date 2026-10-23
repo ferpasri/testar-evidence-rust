@@ -6,8 +6,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 use tempfile::tempdir;
 use testar_evidence::{
-    Error, Event, EventId, EvidenceEvent, JsonlStore, Manifest, RunStatus,
-    StateModel,
+    Error, Event, EventId, EvidenceEvent, ReconstructedEvidence, HistoryStatus,
+    JsonlStore, Manifest,
 };
 
 fn read_json(path: &Path) -> Value {
@@ -50,69 +50,57 @@ fn copy_directory(source: &Path, target: &Path) {
     }
 }
 
-fn normalized(model: &StateModel) -> Value {
-    let observations: Vec<_> = model.observations().map(|observation| json!({
-        "id": observation.id,
-        "run": observation.run,
-        "sequence": observation.sequence,
-        "concrete_state": observation.state.id,
-        "capture": observation.state.capture,
-        "candidate_scope": observation.candidate_scope,
-        "widget_ids": observation.state.widgets.iter().map(|widget| &widget.id).collect::<Vec<_>>(),
-        "candidates": observation.candidates,
-        "artifact_ids": observation.artifacts.iter().map(|artifact| &artifact.id).collect::<Vec<_>>(),
+fn normalized(evidence: &ReconstructedEvidence) -> Value {
+    let observations: Vec<_> = evidence.observations().map(|value| json!({
+        "id": value.id, "test_sequence": value.test_sequence, "observation_index": value.observation_index,
+        "recorded_state": value.recorded_state.id, "capture": value.recorded_state.capture,
+        "available_action_scope": value.available_action_scope,
+        "widget_ids": value.recorded_state.widgets.iter().map(|widget| &widget.id).collect::<Vec<_>>(),
+        "available_actions": value.available_actions,
+        "artifact_ids": value.artifacts.iter().map(|artifact| &artifact.id).collect::<Vec<_>>(),
     })).collect();
-    let runs: Vec<_> = model
-        .runs()
-        .map(|run| {
-            let status = match model.run_status(&run.id).unwrap() {
-                RunStatus::Running => "running",
-                RunStatus::Finished { .. } => "finished",
-            };
-            json!({"id": run.id, "status": status})
-        })
-        .collect();
+    let status = |value: &HistoryStatus| match value {
+        HistoryStatus::Running => "running",
+        HistoryStatus::Finished { .. } => "finished",
+    };
     json!({
         "status": "accepted",
         "counts": {
-            "events": model.event_count(),
-            "runs": model.run_count(),
-            "observations": model.observation_count(),
-            "actions": model.action_count(),
-            "executions": model.execution_count(),
-            "checks": model.checks().len(),
-            "artifact_references": model.observations().map(|observation| observation.artifacts.len()).sum::<usize>(),
-            "concrete_states": model.concrete_state_count(),
+            "evidence_events": evidence.event_count(), "test_runs": evidence.test_run_count(),
+            "test_sequences": evidence.test_sequence_count(), "observations": evidence.observation_count(),
+            "action_descriptions": evidence.action_description_count(), "action_executions": evidence.action_execution_count(),
+            "recorded_transitions": evidence.recorded_transition_count(), "oracle_results": evidence.oracle_results().len(),
+            "artifact_references": evidence.observations().map(|value| value.artifacts.len()).sum::<usize>(),
+            "recorded_states": evidence.recorded_state_count(),
         },
-        "runs": runs,
+        "test_runs": evidence.test_runs().map(|value| json!({"id": value.id, "status": status(evidence.test_run_status(&value.id).unwrap())})).collect::<Vec<_>>(),
+        "test_sequences": evidence.test_sequences().map(|value| json!({"id": value.id, "test_run": value.test_run, "sequence_index": value.sequence_index,
+            "status": status(evidence.test_sequence_status(&value.id).unwrap())})).collect::<Vec<_>>(),
         "observations": observations,
-        "actions": model.actions().map(|action| json!({"id": action.id, "kind": action.kind})).collect::<Vec<_>>(),
-        "executions": model.executions().map(|record| json!({
-            "execution": record.execution, "status": record.status, "result": record.result, "error": record.error,
-        })).collect::<Vec<_>>(),
-        "checks": model.checks(),
-        "concrete_states": model.concrete_states().map(|state| &state.id).collect::<Vec<_>>(),
+        "action_descriptions": evidence.action_descriptions().map(|value| json!({"id": value.id, "action_type": value.action_type})).collect::<Vec<_>>(),
+        "action_executions": evidence.action_executions().collect::<Vec<_>>(),
+        "recorded_transitions": evidence.recorded_transitions(), "oracle_results": evidence.oracle_results(),
+        "recorded_states": evidence.recorded_states().map(|value| &value.id).collect::<Vec<_>>(),
     })
 }
 
 fn normalized_error(error: &Error, event: &EventId) -> Value {
-    match error {
-        Error::InvalidCheckTarget { field, .. } => json!({
-            "code": "invalid_check_target", "event": event, "field": field,
-        }),
-        _ => panic!("Unexpected error for event {event}: {error}"),
-    }
+    json!({"code": error.code(), "event": event, "field": error.field().expect("conformance errors identify a field")})
 }
 
-fn assert_result(model: &StateModel, expected: &Value, failure: Option<Value>) {
+fn assert_result(
+    evidence: &ReconstructedEvidence,
+    expected: &Value,
+    failure: Option<Value>,
+) {
     match expected["status"].as_str().unwrap() {
         "accepted" => {
             assert_eq!(failure, None);
-            assert_eq!(normalized(model), *expected);
+            assert_eq!(normalized(evidence), *expected);
         }
         "rejected" => {
             assert_eq!(failure, Some(expected["error"].clone()));
-            assert_eq!(normalized(model), expected["accepted_prefix"]);
+            assert_eq!(normalized(evidence), expected["accepted_prefix"]);
         }
         status => panic!("Unsupported expected status: {status}"),
     }
@@ -142,9 +130,9 @@ fn assert_evidence_preserved(
     );
     for envelope in accepted {
         match &envelope.event {
-            Event::Observed(observation) => {
+            Event::ObservationRecorded(observation) => {
                 assert_eq!(
-                    store.model().observation(&observation.id),
+                    store.evidence().observation(&observation.id),
                     Some(observation)
                 );
                 for artifact in &observation.artifacts {
@@ -154,22 +142,32 @@ fn assert_evidence_preserved(
                     );
                 }
             }
-            Event::RunStarted(run) => {
-                assert_eq!(store.model().run(&run.id), Some(run))
+            Event::TestRunStarted(run) => {
+                assert_eq!(store.evidence().test_run(&run.id), Some(run))
             }
-            Event::ActionDefined(action) => {
-                assert_eq!(store.model().action(&action.id), Some(action))
+            Event::ActionDescribed(action) => {
+                assert_eq!(
+                    store.evidence().action_description(&action.id),
+                    Some(action)
+                )
             }
             Event::ActionSelected(execution) => assert_eq!(
-                &store.model().execution(&execution.id).unwrap().execution,
+                &store
+                    .evidence()
+                    .action_execution(&execution.id)
+                    .unwrap()
+                    .action_execution,
                 execution
             ),
-            Event::Checked(check) => {
-                assert!(store.model().checks().contains(check))
+            Event::OracleResultRecorded(check) => {
+                assert!(store.evidence().oracle_results().contains(check))
             }
-            Event::RunFinished { run, reason } => assert_eq!(
-                store.model().run_status(run),
-                Some(&RunStatus::Finished {
+            Event::TestRunFinished {
+                test_run: run,
+                reason,
+            } => assert_eq!(
+                store.evidence().test_run_status(run),
+                Some(&HistoryStatus::Finished {
                     reason: reason.clone()
                 })
             ),
@@ -188,6 +186,24 @@ fn prepared_release_contains_discoverable_cases() {
 }
 
 #[test]
+fn reads_shared_evidence_without_opening_a_writer() {
+    for source in xtask::case_directories(support::specs_root()).unwrap() {
+        let expected = read_json(&source.join("expected.json"));
+        let original = fs::read(source.join("evidence.jsonl")).unwrap();
+        match testar_evidence::EvidenceReader::read(&source) {
+            Ok(evidence) => assert_result(&evidence, &expected, None),
+            Err(error) => {
+                let event =
+                    EventId::new(expected["error"]["event"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(normalized_error(&error, &event), expected["error"]);
+            }
+        }
+        assert_eq!(fs::read(source.join("evidence.jsonl")).unwrap(), original);
+    }
+}
+
+#[test]
 fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
     for source in xtask::case_directories(support::specs_root()).unwrap() {
         eprintln!("Reader case: {}", source.display());
@@ -201,7 +217,7 @@ fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
             fs::read(directory.path().join("evidence.jsonl")).unwrap();
         match JsonlStore::open(directory.path()) {
             Ok(store) => {
-                assert_result(store.model(), &expected, None);
+                assert_result(store.evidence(), &expected, None);
                 assert_evidence_preserved(
                     &store,
                     directory.path(),
@@ -210,18 +226,18 @@ fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
                 );
             }
             Err(reader_error) => {
-                let mut model = StateModel::new(manifest).unwrap();
+                let mut evidence = ReconstructedEvidence::new(manifest).unwrap();
                 let mut accepted = Vec::new();
                 let mut failure = None;
                 for envelope in events {
-                    let before = normalized(&model);
-                    match model.apply(envelope.clone()) {
+                    let before = normalized(&evidence);
+                    match evidence.apply(envelope.clone()) {
                         Ok(_) => accepted.push(envelope),
                         Err(error) => {
                             assert_eq!(
-                                normalized(&model),
+                                normalized(&evidence),
                                 before,
-                                "Rejected event changed the model"
+                                "Rejected event changed reconstructed evidence"
                             );
                             let actual = normalized_error(&error, &envelope.id);
                             assert_eq!(
@@ -233,18 +249,18 @@ fn reads_every_shared_case_and_preserves_evidence_on_rejection() {
                         }
                     }
                 }
-                assert_result(&model, &expected, failure);
+                assert_result(&evidence, &expected, failure);
                 let prefix = tempdir().unwrap();
                 copy_directory(&source, prefix.path());
-                let mut evidence = Vec::new();
+                let mut evidence_log_bytes = Vec::new();
                 for envelope in &accepted {
-                    serde_json::to_writer(&mut evidence, envelope).unwrap();
-                    evidence.push(b'\n');
+                    serde_json::to_writer(&mut evidence_log_bytes, envelope).unwrap();
+                    evidence_log_bytes.push(b'\n');
                 }
-                fs::write(prefix.path().join("evidence.jsonl"), evidence)
+                fs::write(prefix.path().join("evidence.jsonl"), evidence_log_bytes)
                     .unwrap();
                 let reopened = JsonlStore::open(prefix.path()).unwrap();
-                assert_eq!(normalized(reopened.model()), normalized(&model));
+                assert_eq!(normalized(reopened.evidence()), normalized(&evidence));
                 assert_evidence_preserved(
                     &reopened,
                     prefix.path(),
@@ -275,7 +291,7 @@ fn produces_every_shared_case_and_reopens_its_accepted_prefix() {
         let mut accepted = Vec::new();
         let mut failure = None;
         for envelope in events {
-            if let Event::Observed(observation) = &envelope.event {
+            if let Event::ObservationRecorded(observation) = &envelope.event {
                 for artifact in &observation.artifacts {
                     let generated = store
                         .put_artifact(
@@ -288,7 +304,7 @@ fn produces_every_shared_case_and_reopens_its_accepted_prefix() {
                     assert_eq!(&generated, artifact);
                 }
             }
-            let before = normalized(store.model());
+            let before = normalized(store.evidence());
             let log_before =
                 fs::read(directory.path().join("evidence.jsonl")).unwrap();
             match store.record(envelope.clone()) {
@@ -301,7 +317,7 @@ fn produces_every_shared_case_and_reopens_its_accepted_prefix() {
                     accepted.push(envelope);
                 }
                 Err(error) => {
-                    assert_eq!(normalized(store.model()), before);
+                    assert_eq!(normalized(store.evidence()), before);
                     assert_eq!(
                         fs::read(directory.path().join("evidence.jsonl"))
                             .unwrap(),
@@ -312,11 +328,11 @@ fn produces_every_shared_case_and_reopens_its_accepted_prefix() {
                 }
             }
         }
-        assert_result(store.model(), &expected, failure.clone());
+        assert_result(store.evidence(), &expected, failure.clone());
         assert_evidence_preserved(&store, directory.path(), &source, &accepted);
         drop(store);
         let reopened = JsonlStore::open(directory.path()).unwrap();
-        assert_result(reopened.model(), &expected, failure);
+        assert_result(reopened.evidence(), &expected, failure);
         assert_evidence_preserved(
             &reopened,
             directory.path(),

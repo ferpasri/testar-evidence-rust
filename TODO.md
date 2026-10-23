@@ -1,15 +1,11 @@
 # TODO
 
-- [x] Preserve shared run metadata and verify supplied, omitted, and flexible-origin cases from specs v0.2.2.
-- [x] Implement generic records, properties, discovered candidates, and concrete execution links.
-- [x] Record test oracle evaluations with explicit targets and readings.
-- [x] Implement portable JSONL storage, artifacts, replay, writer locking, and tail recovery.
-- [x] Download the latest published shared conformance cases and test reading and writing.
-- [x] Verify capture descriptions and aliases, discovered candidates, scripted traces, and temporal assessments against the shared cases, including complete persisted event payloads.
-- [x] Provide a commented example and concise implementation specification.
-- [x] Integrate a separate tool adapter through the library dependency and verify a real execution.
-- [ ] Compare evidence from multiple producers in the dashboard before extending derived model rules.
-- [ ] Extend the conformance runner as specs introduce additional expectation formats and error codes.
-- [ ] Add automated checks for supported platforms and document a release process.
-- [ ] Prepare and publish the library on crates.io.
-- [ ] Evaluate larger traces and persistence approaches when in-memory replay becomes a practical limit.
+- [ ] Publish the tested 0.3.0 library and define distribution through crates.io or a Git dependency.
+- [ ] Add automated cross-language exchange tests using independently generated evidence.
+- [ ] Establish resource limits for very large traces and consider indexed reading when needed.
+- [ ] Define explicit historical-format conversion if consumers require it.
+- [ ] Support future specs additions for offline oracle results and abstract-model exchange when their contracts are published.
+
+- [ ] Compare evidence from multiple producers in the dashboard before extending abstraction rules.
+- [ ] Extend conformance handling as future specs add expectation formats and error codes.
+- [ ] Add supported-platform CI and document the release process.

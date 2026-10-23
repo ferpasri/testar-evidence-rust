@@ -1,10 +1,5 @@
 use serde_json::json;
-use testar_evidence::{
-    ActionCandidate, ActionId, ArtifactReference, CandidateScope, CaptureScope,
-    CheckResult, CheckRule, CheckStatus, CheckTarget, ConcreteState,
-    ConcreteStateId, Error, ExpectedValue, Observation, ObservationId,
-    PropertyMap, RunId, Widget, WidgetId,
-};
+use testar_evidence::*;
 
 fn widget(id: &str, parent: Option<&str>) -> Widget {
     Widget {
@@ -14,9 +9,9 @@ fn widget(id: &str, parent: Option<&str>) -> Widget {
     }
 }
 
-fn concrete_state(widgets: Vec<Widget>) -> ConcreteState {
-    ConcreteState {
-        id: ConcreteStateId::new("snapshot-1").unwrap(),
+fn concrete_state(widgets: Vec<Widget>) -> RecordedState {
+    RecordedState {
+        id: RecordedStateId::new("recorded_state-1").unwrap(),
         properties: PropertyMap::new(),
         widgets,
         capture: CaptureScope::Complete,
@@ -26,15 +21,15 @@ fn concrete_state(widgets: Vec<Widget>) -> ConcreteState {
 fn observation() -> Observation {
     Observation {
         id: ObservationId::new("observation-1").unwrap(),
-        run: RunId::new("run-1").unwrap(),
-        sequence: 0,
+        test_sequence: TestSequenceId::new("run-1").unwrap(),
+        observation_index: 0,
         timestamp_micros: 1_000,
-        state: concrete_state(vec![
+        recorded_state: concrete_state(vec![
             widget("window", None),
             widget("button", Some("window")),
         ]),
-        candidates: Vec::new(),
-        candidate_scope: CandidateScope::Unknown,
+        available_actions: Vec::new(),
+        available_action_scope: AvailableActionScope::Unknown,
         artifacts: Vec::new(),
     }
 }
@@ -52,14 +47,14 @@ fn artifact(path: &str) -> ArtifactReference {
 
 #[test]
 fn typed_ids_reject_blank_values_through_construction_and_deserialization() {
-    assert!(ConcreteStateId::new("").is_err());
-    assert!(ConcreteStateId::new(" \r\n\t").is_err());
-    assert!(serde_json::from_str::<ConcreteStateId>("\"   \"").is_err());
-    assert!(serde_json::from_str::<ConcreteStateId>("42").is_err());
+    assert!(RecordedStateId::new("").is_err());
+    assert!(RecordedStateId::new(" \r\n\t").is_err());
+    assert!(serde_json::from_str::<RecordedStateId>("\"   \"").is_err());
+    assert!(serde_json::from_str::<RecordedStateId>("42").is_err());
 
-    let id = ConcreteStateId::new("native:main-screen").unwrap();
+    let id = RecordedStateId::new("native:main-screen").unwrap();
     let encoded = serde_json::to_string(&id).unwrap();
-    let decoded: ConcreteStateId = serde_json::from_str(&encoded).unwrap();
+    let decoded: RecordedStateId = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, id);
     assert_eq!(decoded.as_str(), "native:main-screen");
 }
@@ -67,49 +62,41 @@ fn typed_ids_reject_blank_values_through_construction_and_deserialization() {
 #[test]
 fn nested_id_deserialization_does_not_bypass_validation() {
     let mut encoded = serde_json::to_value(observation()).unwrap();
-    encoded["state"]["widgets"][0]["id"] = json!(" ");
+    encoded["recorded_state"]["widgets"][0]["id"] = json!(" ");
     assert!(serde_json::from_value::<Observation>(encoded).is_err());
 }
 
 #[test]
-fn omitted_candidate_scope_defaults_to_unknown() {
-    let mut observed = observation();
-    observed.candidates.push(ActionCandidate {
-        action: ActionId::new("activate").unwrap(),
-        target: Some(WidgetId::new("button").unwrap()),
-    });
-    observed.candidate_scope = CandidateScope::Eligible;
-    let mut encoded = serde_json::to_value(&observed).unwrap();
-    assert_eq!(encoded["candidate_scope"], json!("eligible"));
-    encoded.as_object_mut().unwrap().remove("candidate_scope");
-
-    let decoded: Observation = serde_json::from_value(encoded).unwrap();
-    decoded.validate().unwrap();
-    assert_eq!(decoded.candidates, observed.candidates);
-    assert_eq!(decoded.candidate_scope, CandidateScope::Unknown);
-
-    observed.candidate_scope = CandidateScope::Generated;
-    let generated = serde_json::to_value(&observed).unwrap();
-    assert_eq!(generated["candidate_scope"], json!("generated"));
-    let decoded: Observation = serde_json::from_value(generated).unwrap();
-    assert_eq!(decoded.candidate_scope, CandidateScope::Generated);
+fn available_action_scope_is_required_and_preserved() {
+    let mut encoded = serde_json::to_value(observation()).unwrap();
+    encoded["available_action_scope"] = json!("eligible");
+    let decoded: Observation = serde_json::from_value(encoded.clone()).unwrap();
+    assert_eq!(
+        decoded.available_action_scope,
+        AvailableActionScope::Eligible
+    );
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("available_action_scope");
+    assert!(serde_json::from_value::<Observation>(encoded).is_err());
 }
 
 #[test]
 fn observed_properties_preserve_structured_values_and_explicit_null() {
     let mut observed = observation();
     observed
-        .state
+        .recorded_state
         .properties
         .insert("sut:mode".into(), json!("main"));
     observed
-        .state
+        .recorded_state
         .properties
         .insert("sut:empty".into(), json!(null));
-    observed.state.widgets[1]
+    observed.recorded_state.widgets[1]
         .properties
         .insert("ui:enabled".into(), json!(true));
-    observed.state.widgets[1].properties.insert(
+    observed.recorded_state.widgets[1].properties.insert(
         "ui:geometry".into(),
         json!({"position": [5, 10], "size": {"width": 100, "height": 30}}),
     );
@@ -120,10 +107,15 @@ fn observed_properties_preserve_structured_values_and_explicit_null() {
     decoded.validate().unwrap();
     assert_eq!(decoded, observed);
     assert_eq!(
-        decoded.state.properties.get("sut:empty"),
+        decoded.recorded_state.properties.get("sut:empty"),
         Some(&json!(null))
     );
-    assert!(!decoded.state.properties.contains_key("sut:unobserved"));
+    assert!(
+        !decoded
+            .recorded_state
+            .properties
+            .contains_key("sut:unobserved")
+    );
 }
 
 #[test]
@@ -136,7 +128,7 @@ fn generic_widget_forests_allow_multiple_roots_and_preserve_order() {
     ]);
     state.validate().unwrap();
 
-    let decoded: ConcreteState =
+    let decoded: RecordedState =
         serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
     assert_eq!(decoded.widgets, state.widgets);
 }
@@ -181,21 +173,21 @@ fn unavailable_capture_is_distinct_from_a_captured_empty_state() {
 }
 
 #[test]
-fn observation_candidates_bind_to_local_widgets_or_global_actions() {
+fn observation_available_actions_bind_to_local_widgets_or_global_actions() {
     let mut observed = observation();
-    observed.candidates = vec![
-        ActionCandidate {
-            action: ActionId::new("activate").unwrap(),
-            target: Some(WidgetId::new("button").unwrap()),
+    observed.available_actions = vec![
+        AvailableAction {
+            action_description: ActionDescriptionId::new("activate").unwrap(),
+            target_widget: Some(WidgetId::new("button").unwrap()),
         },
-        ActionCandidate {
-            action: ActionId::new("restart").unwrap(),
-            target: None,
+        AvailableAction {
+            action_description: ActionDescriptionId::new("restart").unwrap(),
+            target_widget: None,
         },
     ];
     observed.validate().unwrap();
 
-    observed.candidates[0].target =
+    observed.available_actions[0].target_widget =
         Some(WidgetId::new("another-observation-widget").unwrap());
     assert!(matches!(
         observed.validate(),
@@ -204,13 +196,13 @@ fn observation_candidates_bind_to_local_widgets_or_global_actions() {
 }
 
 #[test]
-fn duplicate_candidates_do_not_inflate_a_single_observation() {
+fn duplicate_available_actions_do_not_inflate_a_single_observation() {
     let mut observed = observation();
-    let candidate = ActionCandidate {
-        action: ActionId::new("activate").unwrap(),
-        target: Some(WidgetId::new("button").unwrap()),
+    let candidate = AvailableAction {
+        action_description: ActionDescriptionId::new("activate").unwrap(),
+        target_widget: Some(WidgetId::new("button").unwrap()),
     };
-    observed.candidates = vec![candidate.clone(), candidate];
+    observed.available_actions = vec![candidate.clone(), candidate];
     assert!(matches!(observed.validate(), Err(Error::Conflict(_))));
 }
 
@@ -219,16 +211,17 @@ fn distinct_observations_preserve_their_own_concrete_data() {
     let first = observation();
     let mut second = first.clone();
     second.id = ObservationId::new("observation-2").unwrap();
-    second.sequence = 1;
-    second.state.id = ConcreteStateId::new("snapshot-2").unwrap();
-    second.state.widgets[1]
+    second.observation_index = 1;
+    second.recorded_state.id =
+        RecordedStateId::new("recorded_state-2").unwrap();
+    second.recorded_state.widgets[1]
         .properties
         .insert("ui:text".into(), json!("changed"));
     first.validate().unwrap();
     second.validate().unwrap();
 
     assert_ne!(first.id, second.id);
-    assert_ne!(first.state, second.state);
+    assert_ne!(first.recorded_state, second.recorded_state);
 }
 
 #[test]
@@ -275,9 +268,10 @@ fn artifacts_require_digest_and_valid_optional_dimensions() {
     reference.sha256 = "z".repeat(64);
     assert!(reference.validate().is_err());
     reference.sha256 = "AB".repeat(32);
-    reference.validate().unwrap();
-    reference.width = Some(0);
     assert!(reference.validate().is_err());
+    reference.sha256 = "ab".repeat(32);
+    reference.width = Some(0);
+    reference.validate().unwrap();
     reference.width = None;
     reference.height = None;
     reference.validate().unwrap();
@@ -292,25 +286,27 @@ fn duplicate_artifact_identity_in_an_observation_is_rejected() {
 }
 
 #[test]
-fn check_results_retain_their_explicit_scope_and_uncertainty() {
-    let result = CheckResult {
-        run: RunId::new("run-1").unwrap(),
-        target: CheckTarget::Run {},
-        rule: CheckRule {
+fn oracle_results_retain_their_explicit_scope_and_uncertainty() {
+    let result = OracleResult {
+        test_run: TestRunId::new(format!("parent-{}", "run-1")).unwrap(),
+        test_sequence: Some(TestSequenceId::new("run-1").unwrap()),
+        oracle_severity: None,
+        oracle_target: OracleTarget::TestSequence {},
+        oracle: Oracle {
             id: "example:eventually-completes".into(),
             version: None,
             parameters: None,
         },
-        expected: ExpectedValue::Unspecified,
-        actual: None,
+        expected_value: ExpectedValue::Unspecified,
+        observed_value: None,
         name: "operation eventually completes".into(),
-        status: CheckStatus::Pending,
-        details: PropertyMap::new(),
+        oracle_status: OracleStatus::Pending,
+        oracle_details: PropertyMap::new(),
     };
     result.validate().unwrap();
     let encoded = serde_json::to_value(&result).unwrap();
-    assert_eq!(encoded["status"], json!("pending"));
-    let decoded: CheckResult = serde_json::from_value(encoded).unwrap();
+    assert_eq!(encoded["oracle_status"], json!("pending"));
+    let decoded: OracleResult = serde_json::from_value(encoded).unwrap();
     assert_eq!(decoded, result);
-    assert_ne!(decoded.status, CheckStatus::Passed);
+    assert_ne!(decoded.oracle_status, OracleStatus::Passed);
 }

@@ -16,7 +16,9 @@ macro_rules! define_id {
         impl $name {
             pub fn new(value: impl Into<String>) -> Result<Self> {
                 let value = value.into();
-                if value.trim().is_empty() {
+                if value.trim().is_empty()
+                    || value.chars().any(char::is_control)
+                {
                     return Err(Error::InvalidRecord(
                         concat!(stringify!($name), " must not be blank").into(),
                     ));
@@ -83,11 +85,13 @@ macro_rules! define_id {
     };
 }
 
-define_id!(ModelId);
-define_id!(RunId);
+define_id!(EvidenceId);
+define_id!(TestRunId);
 define_id!(ObservationId);
-define_id!(ConcreteStateId);
+define_id!(RecordedStateId);
 define_id!(WidgetId);
-define_id!(ActionId);
-define_id!(ExecutionId);
+define_id!(ActionDescriptionId);
+define_id!(ActionExecutionId);
 define_id!(EventId);
+
+define_id!(TestSequenceId);

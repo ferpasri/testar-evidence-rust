@@ -1,27 +1,28 @@
+use crate::{
+    ActionDescription, ActionExecution, ActionExecutionId,
+    ActionExecutionResult, Error, EventId, EvidenceId, Observation,
+    ObservationId, OracleResult, Result, TestRun, TestRunId, TestSequence,
+    TestSequenceId,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ActionDefinition, CheckResult, Error, EventId, Execution, ExecutionId,
-    ModelId, Observation, ObservationId, Result, Run, RunId,
-};
-
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub schema_version: u32,
-    pub model: ModelId,
+    pub evidence_id: EvidenceId,
 }
 
 impl Manifest {
     pub fn validate(&self) -> Result<()> {
-        validate_version(self.schema_version)?;
-        Ok(())
+        validate_version(self.schema_version)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceEvent {
     pub schema_version: u32,
     pub id: EventId,
@@ -29,24 +30,30 @@ pub struct EvidenceEvent {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+#[serde(
+    tag = "event_type",
+    content = "data",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum Event {
-    RunStarted(Run),
-    ActionDefined(ActionDefinition),
-    Observed(Observation),
-    ActionSelected(Execution),
-    ActionSubmitted {
-        execution: ExecutionId,
-        accepted: bool,
-        error: Option<String>,
+    TestRunStarted(TestRun),
+    TestSequenceStarted(TestSequence),
+    ActionDescribed(ActionDescription),
+    ObservationRecorded(Observation),
+    ActionSelected(ActionExecution),
+    ActionExecutionReported(ActionExecutionResult),
+    TransitionRecorded {
+        action_execution: ActionExecutionId,
+        resulting_observation: ObservationId,
     },
-    ActionResult {
-        execution: ExecutionId,
-        observation: ObservationId,
+    OracleResultRecorded(OracleResult),
+    TestSequenceFinished {
+        test_sequence: TestSequenceId,
+        reason: String,
     },
-    Checked(CheckResult),
-    RunFinished {
-        run: RunId,
+    TestRunFinished {
+        test_run: TestRunId,
         reason: String,
     },
 }

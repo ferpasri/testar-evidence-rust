@@ -4,34 +4,28 @@ use std::path::Path;
 
 use serde_json::json;
 use tempfile::tempdir;
-use testar_evidence::{
-    ActionCandidate, ActionDefinition, ActionId, ArtifactReference,
-    CandidateScope, CaptureScope, ConcreteState, ConcreteStateId, Error, Event,
-    EventId, EvidenceEvent, Execution, ExecutionId, JsonlStore, Manifest,
-    ModelId, Observation, ObservationId, PropertyMap, Run, RunId,
-    SCHEMA_VERSION, Widget, WidgetId,
-};
+use testar_evidence::*;
 
 fn manifest() -> Manifest {
     Manifest {
         schema_version: SCHEMA_VERSION,
-        model: ModelId::new("local-model").unwrap(),
+        evidence_id: EvidenceId::new("local-evidence").unwrap(),
     }
 }
 
-fn run() -> Run {
-    Run {
-        id: RunId::new("producer:invocation:run").unwrap(),
+fn run() -> TestRun {
+    TestRun {
+        id: TestRunId::new("producer:invocation:run").unwrap(),
         producer: "test-producer".into(),
         source_run: "0".into(),
         properties: PropertyMap::new(),
     }
 }
 
-fn action() -> ActionDefinition {
-    ActionDefinition {
-        id: ActionId::new("activate").unwrap(),
-        kind: "activate".into(),
+fn action() -> ActionDescription {
+    ActionDescription {
+        id: ActionDescriptionId::new("activate").unwrap(),
+        action_type: "activate".into(),
         properties: PropertyMap::new(),
     }
 }
@@ -39,11 +33,11 @@ fn action() -> ActionDefinition {
 fn observation(name: &str, sequence: u64) -> Observation {
     Observation {
         id: ObservationId::new(name).unwrap(),
-        run: run().id,
-        sequence,
+        test_sequence: TestSequenceId::new("sequence-1").unwrap(),
+        observation_index: sequence,
         timestamp_micros: sequence * 1_000,
-        state: ConcreteState {
-            id: ConcreteStateId::new(format!("concrete-{name}")).unwrap(),
+        recorded_state: RecordedState {
+            id: RecordedStateId::new(format!("concrete-{name}")).unwrap(),
             properties: PropertyMap::from([("app:page".into(), json!(name))]),
             widgets: vec![Widget {
                 id: WidgetId::new("component").unwrap(),
@@ -55,22 +49,22 @@ fn observation(name: &str, sequence: u64) -> Observation {
             }],
             capture: CaptureScope::Complete,
         },
-        candidate_scope: CandidateScope::Generated,
-        candidates: vec![ActionCandidate {
-            action: action().id,
-            target: Some(WidgetId::new("component").unwrap()),
+        available_action_scope: AvailableActionScope::Generated,
+        available_actions: vec![AvailableAction {
+            action_description: action().id,
+            target_widget: Some(WidgetId::new("component").unwrap()),
         }],
         artifacts: Vec::new(),
     }
 }
 
-fn execution() -> Execution {
-    Execution {
-        id: ExecutionId::new("execution").unwrap(),
-        run: run().id,
-        source: ObservationId::new("first").unwrap(),
-        action: action().id,
-        target: Some(WidgetId::new("component").unwrap()),
+fn execution() -> ActionExecution {
+    ActionExecution {
+        id: ActionExecutionId::new("action_execution").unwrap(),
+        test_sequence: TestSequenceId::new("sequence-1").unwrap(),
+        source_observation: ObservationId::new("first").unwrap(),
+        action_description: action().id,
+        target_widget: Some(WidgetId::new("component").unwrap()),
         parameters: PropertyMap::new(),
     }
 }
@@ -85,10 +79,25 @@ fn event(name: &str, event: Event) -> EvidenceEvent {
 
 fn start(store: &mut JsonlStore) {
     store
-        .record(event("run", Event::RunStarted(run())))
+        .record(event("test_sequence", Event::TestRunStarted(run())))
         .unwrap();
     store
-        .record(event("action", Event::ActionDefined(action())))
+        .record(event(
+            "sequence-start",
+            Event::TestSequenceStarted(TestSequence {
+                id: TestSequenceId::new("sequence-1").unwrap(),
+                test_run: run().id,
+                sequence_index: 1,
+                source_sequence: "1".into(),
+                properties: PropertyMap::new(),
+            }),
+        ))
+        .unwrap();
+    store
+        .record(event(
+            "action_description",
+            Event::ActionDescribed(action()),
+        ))
         .unwrap();
 }
 
@@ -104,7 +113,10 @@ fn saves_reopens_and_continues_without_duplicating_evidence() {
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
     start(&mut store);
     store
-        .record(event("first", Event::Observed(observation("first", 0))))
+        .record(event(
+            "first",
+            Event::ObservationRecorded(observation("first", 0)),
+        ))
         .unwrap();
     store
         .record(event("selected", Event::ActionSelected(execution())))
@@ -112,38 +124,41 @@ fn saves_reopens_and_continues_without_duplicating_evidence() {
     store
         .record(event(
             "submitted",
-            Event::ActionSubmitted {
-                execution: execution().id,
-                accepted: true,
+            Event::ActionExecutionReported(ActionExecutionResult {
+                action_execution: execution().id,
+                outcome: ActionOutcome::Returned,
                 error: None,
-            },
+            }),
         ))
         .unwrap();
     store
-        .record(event("second", Event::Observed(observation("second", 1))))
+        .record(event(
+            "second",
+            Event::ObservationRecorded(observation("second", 1)),
+        ))
         .unwrap();
     store
         .record(event(
             "result",
-            Event::ActionResult {
-                execution: execution().id,
-                observation: ObservationId::new("second").unwrap(),
+            Event::TransitionRecorded {
+                action_execution: execution().id,
+                resulting_observation: ObservationId::new("second").unwrap(),
             },
         ))
         .unwrap();
-    assert_eq!(store.model().link_count(), 1);
+    assert_eq!(store.evidence().recorded_transition_count(), 1);
     drop(store);
 
     let mut store = JsonlStore::open(directory.path()).unwrap();
-    assert_eq!(store.model().manifest(), &manifest());
-    assert_eq!(store.model().observation_count(), 2);
-    assert_eq!(store.model().link_count(), 1);
-    assert_eq!(store.model().event_count(), 7);
+    assert_eq!(store.evidence().manifest(), &manifest());
+    assert_eq!(store.evidence().observation_count(), 2);
+    assert_eq!(store.evidence().recorded_transition_count(), 1);
+    assert_eq!(store.evidence().event_count(), 8);
     store
         .record(event(
             "finish",
-            Event::RunFinished {
-                run: run().id,
+            Event::TestSequenceFinished {
+                test_sequence: TestSequenceId::new("sequence-1").unwrap(),
                 reason: "complete".into(),
             },
         ))
@@ -152,8 +167,8 @@ fn saves_reopens_and_continues_without_duplicating_evidence() {
     drop(store);
 
     let store = JsonlStore::open(directory.path()).unwrap();
-    assert_eq!(store.model().event_count(), 8);
-    assert_eq!(store.model().link_count(), 1);
+    assert_eq!(store.evidence().event_count(), 9);
+    assert_eq!(store.evidence().recorded_transition_count(), 1);
 }
 
 #[test]
@@ -204,7 +219,7 @@ fn exact_duplicates_are_idempotent_and_conflicting_ids_do_not_append() {
     let directory = tempdir().unwrap();
     let log = directory.path().join("evidence.jsonl");
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
-    let original = event("run", Event::RunStarted(run()));
+    let original = event("test_sequence", Event::TestRunStarted(run()));
     assert!(store.record(original.clone()).unwrap());
     let original_length = fs::metadata(&log).unwrap().len();
     assert!(!store.record(original.clone()).unwrap());
@@ -213,7 +228,8 @@ fn exact_duplicates_are_idempotent_and_conflicting_ids_do_not_append() {
     let mut conflicting = run();
     conflicting.producer = "another-producer".into();
     assert!(matches!(
-        store.record(event("run", Event::RunStarted(conflicting))),
+        store
+            .record(event("test_sequence", Event::TestRunStarted(conflicting))),
         Err(Error::Conflict(_))
     ));
     assert_eq!(fs::metadata(&log).unwrap().len(), original_length);
@@ -223,8 +239,8 @@ fn exact_duplicates_are_idempotent_and_conflicting_ids_do_not_append() {
     repeated.push(b'\n');
     append(&log, &repeated);
     let store = JsonlStore::open(directory.path()).unwrap();
-    assert_eq!(store.model().run_count(), 1);
-    assert_eq!(store.model().event_count(), 1);
+    assert_eq!(store.evidence().test_run_count(), 1);
+    assert_eq!(store.evidence().event_count(), 1);
 }
 
 #[test]
@@ -233,7 +249,7 @@ fn incomplete_tail_requires_explicit_recovery_before_continuing() {
     let log = directory.path().join("evidence.jsonl");
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
     store
-        .record(event("run", Event::RunStarted(run())))
+        .record(event("test_sequence", Event::TestRunStarted(run())))
         .unwrap();
     drop(store);
 
@@ -254,11 +270,14 @@ fn incomplete_tail_requires_explicit_recovery_before_continuing() {
     assert_eq!(JsonlStore::recover_tail(directory.path()).unwrap(), 0);
 
     let mut store = JsonlStore::open(directory.path()).unwrap();
-    assert_eq!(store.model().run_count(), 1);
+    assert_eq!(store.evidence().test_run_count(), 1);
     store
-        .record(event("action", Event::ActionDefined(action())))
+        .record(event(
+            "action_description",
+            Event::ActionDescribed(action()),
+        ))
         .unwrap();
-    assert_eq!(store.model().event_count(), 2);
+    assert_eq!(store.evidence().event_count(), 2);
 }
 
 #[test]
@@ -267,7 +286,7 @@ fn completed_corruption_is_never_skipped_or_truncated_by_tail_recovery() {
     let log = directory.path().join("evidence.jsonl");
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
     store
-        .record(event("run", Event::RunStarted(run())))
+        .record(event("test_sequence", Event::TestRunStarted(run())))
         .unwrap();
     drop(store);
     append(&log, b"not valid JSON\n{unfinished");
@@ -288,7 +307,7 @@ fn rejects_unsupported_manifest_and_event_versions_without_mutation() {
     assert!(!directory.path().join("manifest.json").exists());
 
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
-    let mut envelope = event("run", Event::RunStarted(run()));
+    let mut envelope = event("test_sequence", Event::TestRunStarted(run()));
     envelope.schema_version += 1;
     assert!(store.record(envelope.clone()).is_err());
     assert_eq!(
@@ -323,11 +342,16 @@ fn rejects_unknown_references_before_append_and_during_replay() {
     let directory = tempdir().unwrap();
     let log = directory.path().join("evidence.jsonl");
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();
-    let envelope =
-        event("observation", Event::Observed(observation("first", 0)));
+    let envelope = event(
+        "observation",
+        Event::ObservationRecorded(observation("first", 0)),
+    );
     assert!(matches!(
         store.record(envelope.clone()),
-        Err(Error::UnknownReference(_))
+        Err(Error::Validation {
+            code: "invalid_reference",
+            ..
+        })
     ));
     assert_eq!(fs::metadata(&log).unwrap().len(), 0);
     drop(store);
@@ -336,12 +360,18 @@ fn rejects_unknown_references_before_append_and_during_replay() {
     record.push(b'\n');
     append(&log, &record);
     let error = JsonlStore::open(directory.path()).err().unwrap();
-    assert!(matches!(error, Error::UnknownReference(_)));
+    assert!(matches!(
+        error,
+        Error::Validation {
+            code: "invalid_reference",
+            ..
+        }
+    ));
     assert!(error.to_string().contains("line 1"));
 }
 
 #[test]
-fn referenced_artifacts_reopen_after_copying_the_model_directory() {
+fn referenced_artifacts_reopen_after_copying_the_evidence_directory() {
     let source = tempdir().unwrap();
     let destination = tempdir().unwrap();
     let bytes = b"portable visual evidence";
@@ -360,7 +390,7 @@ fn referenced_artifacts_reopen_after_copying_the_model_directory() {
     let mut observed = observation("first", 0);
     observed.artifacts.push(reference.clone());
     store
-        .record(event("first", Event::Observed(observed)))
+        .record(event("first", Event::ObservationRecorded(observed)))
         .unwrap();
     drop(store);
 
@@ -375,7 +405,7 @@ fn referenced_artifacts_reopen_after_copying_the_model_directory() {
     )
     .unwrap();
     let store = JsonlStore::open(destination.path()).unwrap();
-    assert_eq!(store.model().observation_count(), 1);
+    assert_eq!(store.evidence().observation_count(), 1);
     assert_eq!(store.read_artifact(&reference).unwrap(), bytes);
 }
 
@@ -396,10 +426,10 @@ fn missing_or_corrupted_artifacts_are_not_acknowledged() {
     observed.artifacts.push(missing);
     assert!(
         store
-            .record(event("missing", Event::Observed(observed)))
+            .record(event("missing", Event::ObservationRecorded(observed)))
             .is_err()
     );
-    assert_eq!(store.model().observation_count(), 0);
+    assert_eq!(store.evidence().observation_count(), 0);
 
     let reference = store
         .put_artifact(b"original bytes", "image/png", None, None)
@@ -407,7 +437,7 @@ fn missing_or_corrupted_artifacts_are_not_acknowledged() {
     let mut observed = observation("first", 0);
     observed.artifacts.push(reference.clone());
     store
-        .record(event("first", Event::Observed(observed)))
+        .record(event("first", Event::ObservationRecorded(observed)))
         .unwrap();
     fs::write(directory.path().join(&reference.path), b"modified bytes")
         .unwrap();
@@ -426,7 +456,7 @@ fn missing_or_corrupted_artifacts_are_not_acknowledged() {
     drop(store);
     let error = JsonlStore::open(directory.path()).err().unwrap();
     assert!(error.to_string().contains("artifact digest mismatch"));
-    assert!(error.to_string().contains("line 3"));
+    assert!(error.to_string().contains("line 4"));
 }
 
 #[test]
@@ -437,7 +467,7 @@ fn rejects_invalid_artifact_metadata_and_traversal() {
     assert!(
         store
             .put_artifact(b"bytes", "image/png", Some(0), Some(1))
-            .is_err()
+            .is_ok()
     );
     let mut reference = store
         .put_artifact(b"bytes", "image/png", None, None)
@@ -451,7 +481,7 @@ fn rejects_invalid_artifact_metadata_and_traversal() {
 
 #[cfg(unix)]
 #[test]
-fn rejects_artifact_symlinks_that_escape_the_model_directory() {
+fn rejects_artifact_symlinks_that_escape_the_evidence_directory() {
     use std::os::unix::fs::symlink;
 
     let directory = tempdir().unwrap();
