@@ -20,19 +20,6 @@ fn manifest() -> Manifest {
 }
 
 #[test]
-fn shared_evidence_replays_into_reconstructed_evidence() {
-    let mut evidence = ReconstructedEvidence::new(manifest()).unwrap();
-    for line in shared_evidence().lines() {
-        let envelope: EvidenceEvent = serde_json::from_str(line).unwrap();
-        assert!(evidence.apply(envelope).unwrap());
-    }
-    assert_eq!(evidence.event_count(), 4);
-    assert_eq!(evidence.recorded_state_count(), 1);
-    assert_eq!(evidence.recorded_transition_count(), 0);
-    assert_eq!(evidence.action_description_count(), 1);
-}
-
-#[test]
 fn floating_point_evidence_reopens_exactly_and_retry_stays_idempotent() {
     let directory = tempdir().unwrap();
     let mut store = JsonlStore::create(directory.path(), manifest()).unwrap();

@@ -1,6 +1,6 @@
 # Rust evidence library specification
 
-The library implements [schema 3](https://github.com/ferpasri/testar-evidence-specs/blob/v0.3.0/docs/evidence-format.md). Adapters report facts from their tools; validation checks records and references before storage. The shared [terminology](https://github.com/ferpasri/testar-evidence-specs/blob/v0.3.0/docs/terminology.md) defines their meaning.
+The library validates and stores records using the [shared evidence contract](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/evidence-format.md). The [shared terminology](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/terminology.md) defines record meanings. Public APIs are in `testar_evidence`; package and format identifiers are described in the [README](../README.md#compatibility).
 
 ## Components
 
@@ -16,38 +16,28 @@ The library implements [schema 3](https://github.com/ferpasri/testar-evidence-sp
 | `ReconstructedEvidence` | Retain recorded facts and relationships in memory for validation and inspection. |
 | `JsonlStore` / `EvidenceReader` | Write validated evidence and read it back. |
 
-## Histories and transitions
+## Validation and value handling
 
-A test run starts before its sequences. Sequence indexes increase within the run; observation indexes increase independently within each sequence. Sequences can be interleaved without mixing their executions. A run finishes after all its started sequences finish. Repeated captures remain separate observations, including when recorded-state content is shared.
+`validate` checks without mutation; `apply` validates before changing records. Identical retries return false. Domain errors expose a stable code and field when applicable. Rejected events change neither accepted history nor the saved log.
 
-Selection refers to the latest observation and a reported available-action/widget pair. Each sequence has at most one execution awaiting its execution result or resulting observation. A returned call awaits a later observation in the same sequence. An error retains its message and permits another selection; partial effects can be captured without inventing a completed transition. Finishing a sequence makes unfinished executions incomplete.
+The shared contract owns run and sequence ordering, available-action bindings, recorded transitions, and oracle-target rules. The reconstructor enforces those rules on recording and reading. Observation-order links belong to consumers rather than recorded action events.
 
-Execution status is `awaiting_execution_result`, `awaiting_resulting_observation`, `failed`, `completed`, or `incomplete`. Recorded transitions retain transition-recording order; executions retain selection order. An observation-order link is a viewer relationship rather than an action inferred by this library.
+Properties retain nested JSON, arbitrary-precision integers and decimals, and explicit null. Typed indexes and timestamps use `u64`.
 
-`validate` checks without mutation. `apply` validates before changing records. Identical event retries return false; conflicting event IDs or changed state/description content are rejected. A failed validation leaves history and the saved log intact. Domain errors expose a stable code and field when applicable.
+Source properties, capture descriptions, aliases, omissions, and optional run/sequence metadata remain as supplied. Oracle status and source-defined severity remain independent. Adapters establish property meanings; see the shared [capture guidance](https://github.com/ferpasri/testar-evidence-specs/blob/main/docs/capture-evidence.md).
 
-## Properties and oracle results
+## Reading and storage
 
-Properties preserve JSON values, arbitrary-precision integers and decimals, nested objects, and explicit null. Missing fields remain distinct from supplied null where the contract permits both. Typed indexes and timestamps use `u64`. Widget parents remain inside one state and form an acyclic hierarchy.
+`JsonlStore::create(directory, manifest)` refuses existing evidence files and holds an exclusive writer lock. Each successful record is validated with artifact hashes, appended as newline-terminated UTF-8 JSON, and synchronized before acknowledgment. A persistence failure invalidates the writer until reopening.
 
-Oracle targets cover a run, sequence, observation, widget, property, action execution, or inclusive observation range. Sequence-level references belong to the declared sequence and parent run. A whole-run target omits its sequence reference. A property target can name an absent property. Broad targets do not establish individual property coverage.
+`EvidenceReader::read(directory)` validates saved evidence without opening a writer. `JsonlStore::open(directory)` validates it before continued recording. `store.evidence()` exposes shared references to validated records. Rust ownership prevents callers from mutating accepted history through them.
 
-Expected values distinguish omission from supplied null. Observed values distinguish value, established absence, and unknown information. Oracle severity is optional and preserves its source label and optional numeric value without imposing a universal range or changing oracle status. Each result remains separate, including repeated or late results after histories end.
+Lookup methods expose recorded sequences, observations, executions, and incoming/outgoing transitions. They preserve recorded facts and do not construct an abstract model.
 
-Optional assessment metadata preserves temporal semantics, reporting phase, and the corresponding ending reason. Sequence and run phases refer to the appropriate lifecycle. Ending a history does not change pending oracle statuses.
+Artifacts use SHA-256 identities and relative paths. Identical bytes reuse files; PNG, JPEG, and other media use `.png`, `.jpeg`, and `.bin` paths. Reading and recording verify referenced bytes. Path validation rejects traversal and unsafe platform-specific names.
 
-## Metadata
-
-Run and sequence properties preserve supplied origin, test objective, adapter, and adapter-version descriptions. Unicode and spacing are retained; omitted descriptions remain absent. Sequence metadata remains separate from parent-run metadata. Capture descriptions, property aliases, and known omissions are retained as supplied; adapters establish source-property meanings.
-
-## Persistence
-
-The store holds an exclusive writer lock. Creation refuses existing evidence files. Each successful record is validated with referenced artifact hashes, appended as newline-terminated UTF-8 JSON, and synchronized before acknowledgment. A persistence failure invalidates the writer until reopening. A read-only reader rebuilds evidence without opening a writer.
-
-Artifacts use SHA-256 content identities and portable relative paths. Identical bytes reuse stored files. PNG, JPEG, and other media use `.png`, `.jpeg`, and `.bin` paths. Hash verification detects missing or changed bytes when recording or reading. The existing path checks reject traversal and platform-specific unsafe names.
-
-Opening an unfinished final line fails. Explicit `recover_tail` validates the complete prefix and artifacts before removing only the unfinished fragment; complete invalid records are retained and reported.
+An unfinished final line requires explicit `recover_tail`: recovery validates the complete prefix and artifacts before removing only that unfinished fragment. Complete invalid records are reported rather than discarded.
 
 ## Verification
 
-Reader and producer tests use the newest prepared specs release and verify its checksums. They compare all released expected summaries and accepted payloads, rejection prefixes, retries, reopen behavior, and artifacts. Unit tests cover immutable state identities, hierarchy, interleaved sequences, transitions, exact numbers, oracle targets/severity, writer locks, failed writes, and recovery.
+Reader and producer tests discover all prepared specs cases, verify cache checksums, and compare expected summaries, complete accepted payloads, rejection prefixes, retries, and artifacts. Focused tests cover implementation boundaries including exact values, independent snapshots, writer locks, failed writes, and recovery. Preparation and test commands are in the [README](../README.md#build-and-test).
